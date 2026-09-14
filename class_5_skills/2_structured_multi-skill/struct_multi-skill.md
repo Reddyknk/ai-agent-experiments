@@ -78,14 +78,14 @@ antigravity-agent/
       - Invoker
       - Target
       - Short Description
-    - When the row is clickec, open a pop up window to show the detailed JSON logs in human readable format
+    - When the row is clicked, open a pop up window to show the detailed JSON logs in human readable format
 
 - Impport API key and model name from `.env` file and use them to initialize the `genai` client.
 
 - Create `logging.py` module to handle all logging operations.
   - It should log ALL of the Agent, LLM, and Tool ( including external APIs ) invocations in the `logs/` directory.
   - The log format should be JSON.
-  - The log should contain the actual payload with all the fields passed or recevied from the model or tool invocation.
+  - The log should contain the actual payload with all the fields passed or received from the model or tool invocation.
   - The API key in the payload should be redacted.
   - The log should be written asynchronously to the log file to avoid blocking the agent execution.
 
