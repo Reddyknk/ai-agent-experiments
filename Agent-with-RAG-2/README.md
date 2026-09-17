@@ -105,7 +105,7 @@ Press `CTRL+C` in the terminal running `app.py`. The registered exit handlers wi
 ## 5. User Guide
 
 ### 1. Chat & Knowledge Synthesis
-- **Model Selection**: Select from available Google Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-1.5-flash`, `gemini-1.5-pro`) or choose **Custom Model** to enter your own endpoint URL (e.g., `http://127.0.0.1:8000/v1/chat/completions`).
+- **Model Selection**: Defaults to `gemma-4-26b-a4b-it`. On startup, the application fetches active text-generation models directly from the Google AI Studio API and populates the dropdown menu (e.g., `gemma-4-26b-a4b-it`, `gemini-2.5-flash`, `gemini-2.5-pro`, etc.), or choose **Custom Model** to enter your own endpoint URL (e.g., `http://127.0.0.1:8000/v1/chat/completions`).
 - **Inference Parameters**:
   - Adjust **Temperature** (0.0 to 2.0).
   - Adjust **Max Tokens** (enforced below model maximum limit).
@@ -115,6 +115,10 @@ Press `CTRL+C` in the terminal running `app.py`. The registered exit handlers wi
   - *Registry query*: "Who is the Principal AI Engineer and where are they located?"
   - *Stock market query*: "What are the top gaining stocks in the market today?"
   - *Document RAG query*: "What was our total revenue and net income in FY2025 financial report?"
+- **Response Box with "Show Logs" Button & Component Bubbles**:
+  - Each response includes a box containing bubbles displaying the name of the components that generated the logs (`Skills`, `Agent`, `RAG`, `Tools`, `LLM`), appropriate icons (`⚡`, `🤖`, `📚`, `🛠️`, `🧠`), and the elapsed time of each step.
+  - A toggle button named **"Show Logs"** toggles between expand and collapse.
+  - Clicking **"Show Logs"** expands the collapsible box to reveal the full content of every step including its summary and detailed log records with full JSON payloads, equipped with scroll areas if the content is long.
 - **Retrieved Context Evidence**:
   - Inspect the right-hand card to review retrieved evidence grouped by step (**Skill Search** and **Document Search**) with similarity confidence scores and raw snippets.
 
@@ -135,15 +139,13 @@ Press `CTRL+C` in the terminal running `app.py`. The registered exit handlers wi
 
 ### 4. Audit Log & Event Trace
 - **Conversation Explorer**: Browse all user conversations in reverse chronological order with local timestamps, User Query, Agent Response, and the exact **Number of Events (occured during the conversation)**. Click any conversation row to view its trace.
-- **Event Trace Table**: View all fine-grained events across the 8 specified architectural components:
-  - `user`
-  - `agent`
-  - `skill`
-  - `tool`
-  - `vector database`
-  - `ollamavector model`
-  - `external API call`
-  - `prompts sent to and response received from the model`
+- **Event Trace Table**: View all fine-grained events across the specified architectural components:
+  - `agent` (full log of message sent to agent and response received)
+  - `tool` (full log of tool message passed and received including actual payload)
+  - `ollama vector` (log first 50 characters of text chunk sent, response from vectorizer, omitting vector floats)
+  - `external API call` (full payload passed to and received from external APIs)
+  - `LLM` (prompts sent to and response received from model with FULL payload)
+  - `user`, `skill`, `vector database`
 - **JSON Payload Inspector**: Click any event row to inspect full un-truncated JSON payloads and responses with sensitive API keys redacted.
 - **Clear Logs**: Click **Clear Logs** and confirm in the dialog to erase audit records.
 

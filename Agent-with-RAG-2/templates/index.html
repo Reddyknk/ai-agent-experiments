@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
+
 <body>
 
   <!-- Top Header Navigation -->
@@ -19,7 +21,8 @@
 
       <!-- 4 Switchable Page Tabs -->
       <nav class="nav-tabs" role="tablist">
-        <button id="tab-btn-chat" class="tab-btn active" onclick="switchTab('chat')">Chat &amp; Knowledge Synthesis</button>
+        <button id="tab-btn-chat" class="tab-btn active" onclick="switchTab('chat')">Chat &amp; Knowledge
+          Synthesis</button>
         <button id="tab-btn-ingest" class="tab-btn" onclick="switchTab('ingest')">Vector DB Ingestion</button>
         <button id="tab-btn-telemetry" class="tab-btn" onclick="switchTab('telemetry')">Telemetry</button>
         <button id="tab-btn-audit" class="tab-btn" onclick="switchTab('audit')">Audit Log &amp; Event</button>
@@ -52,7 +55,8 @@
         <div class="top-bar-controls">
           <div class="control-item">
             <label for="chat-max-tokens">Max Tokens:</label>
-            <input type="number" id="chat-max-tokens" class="control-input" value="2048" min="1" max="8192">
+            <input type="number" id="chat-max-tokens" class="control-input" value="2048" min="1" max="8192"
+              oninput="clampMaxTokens(this)">
           </div>
 
           <div class="control-item">
@@ -63,17 +67,16 @@
           <div class="control-item">
             <label for="chat-model-select">Model:</label>
             <select id="chat-model-select" class="control-select" onchange="onModelChange()">
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+              <option value="gemma-4-26b-a4b-it" selected>Gemma 4 26B A4B It</option>
+              <option value="gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
               <option value="custom">Custom Model</option>
             </select>
           </div>
 
           <div class="control-item" id="custom-endpoint-box" style="display: none;">
             <label for="chat-custom-endpoint">Endpoint:</label>
-            <input type="text" id="chat-custom-endpoint" class="control-input" style="width: 250px;" placeholder="http://127.0.0.1:8000/v1/chat/completions">
+            <input type="text" id="chat-custom-endpoint" class="control-input" style="width: 250px;"
+              placeholder="http://127.0.0.1:8000/v1/chat/completions" value="http://127.0.0.1:8000/v1/chat/completions">
           </div>
         </div>
       </div>
@@ -98,12 +101,14 @@
           <div class="chat-container">
             <div id="chat-history" class="chat-history">
               <div class="chat-message agent">
-                Welcome to Agent with RAG! Ask me questions, test domain queries against sample documents, check employee records, stock market metrics, or current global weather and time.
+                Welcome to Agent with RAG! Ask me questions, test domain queries against sample documents, check
+                employee records, stock market metrics, or current global weather and time.
               </div>
             </div>
 
             <div class="chat-input-bar">
-              <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question or issue a command..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+              <input type="text" id="chat-input" class="chat-input" placeholder="Ask a question or issue a command..."
+                onkeydown="if(event.key==='Enter') sendChatMessage()">
               <button id="btn-send-chat" class="btn-primary" onclick="sendChatMessage()">Send</button>
             </div>
           </div>
@@ -117,7 +122,8 @@
           </div>
           <div id="evidence-container" class="evidence-list">
             <div style="color: var(--text-muted); font-size: 0.9rem; margin-top: 12px;">
-              Retrieved context chunks and skill tool outputs will appear here grouped by step (Skill Search, Document Search).
+              Retrieved context chunks and skill tool outputs will appear here grouped by step (Skill Search, Document
+              Search).
             </div>
           </div>
         </div>
@@ -141,7 +147,8 @@
           </div>
 
           <!-- Update Skills Database Button -->
-          <button id="btn-update-skills" class="btn-secondary" onclick="updateSkillsDatabase()">⚡ Update Skills Database</button>
+          <button id="btn-update-skills" class="btn-secondary" onclick="updateSkillsDatabase()">⚡ Update Skills
+            Database</button>
 
           <!-- Ingestion Statistics -->
           <div class="agent-status-box" id="ingest-stats-badge">
@@ -171,17 +178,23 @@
               <option value="url">Web URL</option>
               <option value="local">Local Directory / File</option>
             </select>
-            <input type="text" id="ingest-target-input" class="chat-input" placeholder="https://example.com or /path/to/docs">
+            <input type="text" id="ingest-target-input" class="chat-input"
+              placeholder="https://example.com or /path/to/docs">
           </div>
 
           <!-- 5 Sample Web URL Buttons -->
           <div id="url-preset-container">
             <div style="font-size: 0.8rem; color: var(--text-muted);">Quick Sample Web URLs:</div>
             <div class="preset-buttons">
-              <button class="preset-btn" onclick="setIngestUrl('https://en.wikipedia.org/wiki/Retrieval-augmented_generation')">RAG Wikipedia</button>
-              <button class="preset-btn" onclick="setIngestUrl('https://en.wikipedia.org/wiki/Artificial_intelligence')">AI Wikipedia</button>
-              <button class="preset-btn" onclick="setIngestUrl('https://en.wikipedia.org/wiki/Vector_database')">Vector DB Wiki</button>
-              <button class="preset-btn" onclick="setIngestUrl('https://python.langchain.com/docs/introduction/')">LangChain Docs</button>
+              <button class="preset-btn"
+                onclick="setIngestUrl('https://en.wikipedia.org/wiki/Retrieval-augmented_generation')">RAG
+                Wikipedia</button>
+              <button class="preset-btn"
+                onclick="setIngestUrl('https://en.wikipedia.org/wiki/Artificial_intelligence')">AI Wikipedia</button>
+              <button class="preset-btn" onclick="setIngestUrl('https://en.wikipedia.org/wiki/Vector_database')">Vector
+                DB Wiki</button>
+              <button class="preset-btn"
+                onclick="setIngestUrl('https://python.langchain.com/docs/introduction/')">LangChain Docs</button>
               <button class="preset-btn" onclick="setIngestUrl('sample_docs')">Local: sample_docs/</button>
             </div>
           </div>
@@ -207,7 +220,8 @@
           </div>
 
           <div style="margin-top: auto; padding-top: 16px;">
-            <button id="btn-populate-db" class="btn-primary" style="width: 100%; justify-content: center;" onclick="populateVectorDatabase()">
+            <button id="btn-populate-db" class="btn-primary" style="width: 100%; justify-content: center;"
+              onclick="populateVectorDatabase()">
               Populate Vector Database
             </button>
           </div>
@@ -218,7 +232,9 @@
           <div class="card-header">
             <div class="card-title">
               <span>📊 Vector Storage Status</span>
-              <span id="ingest-progress-spinner" style="display: none; font-size: 0.8rem; color: var(--accent-cyan); margin-left: 8px;">⏳ Ingestion in progress...</span>
+              <span id="ingest-progress-spinner"
+                style="display: none; font-size: 0.8rem; color: var(--accent-cyan); margin-left: 8px;">⏳ Ingestion in
+                progress...</span>
             </div>
             <button id="btn-reset-db" class="btn-danger" onclick="resetDatabase()">Reset DB</button>
           </div>
@@ -233,7 +249,9 @@
                 </tr>
               </thead>
               <tbody id="ingested-docs-tbody">
-                <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">No documents ingested yet.</td></tr>
+                <tr>
+                  <td colspan="3" style="text-align: center; color: var(--text-muted);">No documents ingested yet.</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -279,7 +297,8 @@
             </select>
           </div>
 
-          <button id="btn-refresh-telemetry" class="btn-secondary" onclick="fetchTelemetryData()">🔄 Refresh Telemetry</button>
+          <button id="btn-refresh-telemetry" class="btn-secondary" onclick="fetchTelemetryData()">🔄 Refresh
+            Telemetry</button>
         </div>
       </div>
 
@@ -290,7 +309,7 @@
           <div class="kpi-value" id="kpi-total-prompts">0</div>
         </div>
         <div class="kpi-tile">
-          <div class="kpi-label">Total Responses</div>
+          <div class="kpi-label">Total Response</div>
           <div class="kpi-value" id="kpi-total-responses">0</div>
         </div>
         <div class="kpi-tile">
@@ -298,11 +317,11 @@
           <div class="kpi-value" id="kpi-total-errors" style="color: var(--accent-rose);">0</div>
         </div>
         <div class="kpi-tile">
-          <div class="kpi-label">Input Tokens</div>
+          <div class="kpi-label">Total Input Tokens</div>
           <div class="kpi-value" id="kpi-input-tokens">0</div>
         </div>
         <div class="kpi-tile">
-          <div class="kpi-label">Output Tokens</div>
+          <div class="kpi-label">Total Output Tokens</div>
           <div class="kpi-value" id="kpi-output-tokens">0</div>
         </div>
       </div>
@@ -356,22 +375,27 @@
         <div class="card-header">
           <div class="card-title">ℹ️ Other Important Statistic not Available for Low-Performance Computer</div>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; font-size: 0.88rem; color: var(--text-secondary);">
+        <div
+          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; font-size: 0.88rem; color: var(--text-secondary);">
           <div>
             <strong style="color: var(--accent-cyan);">Time to First Token (TTFT):</strong>
-            <p style="margin-top: 4px; line-height: 1.45;">The duration between a user sending a prompt and receiving the very first token. This is the most critical metric for perceived speed in streaming applications.</p>
+            <p style="margin-top: 4px; line-height: 1.45;">The duration between a user sending a prompt and receiving
+              the very first token. This is the most critical metric for perceived speed in streaming applications.</p>
           </div>
           <div>
             <strong style="color: var(--accent-cyan);">Inter-Token Latency (ITL):</strong>
-            <p style="margin-top: 4px; line-height: 1.45;">The average time elapsed between generating each subsequent token.</p>
+            <p style="margin-top: 4px; line-height: 1.45;">The average time elapsed between generating each subsequent
+              token.</p>
           </div>
           <div>
             <strong style="color: var(--accent-cyan);">Tokens Per Second (TPS):</strong>
-            <p style="margin-top: 4px; line-height: 1.45;">The throughput speed of the model generation (often measured per request or aggregated across the server).</p>
+            <p style="margin-top: 4px; line-height: 1.45;">The throughput speed of the model generation (often measured
+              per request or aggregated across the server).</p>
           </div>
           <div>
             <strong style="color: var(--accent-cyan);">Time Per Output Token (TPOT):</strong>
-            <p style="margin-top: 4px; line-height: 1.45;">The total time taken to generate the response divided by the number of output tokens.</p>
+            <p style="margin-top: 4px; line-height: 1.45;">The total time taken to generate the response divided by the
+              number of output tokens.</p>
           </div>
         </div>
       </div>
@@ -415,7 +439,7 @@
           <div class="card-title">💬 User Conversations (Select a row to inspect associated events)</div>
           <div style="font-size: 0.85rem; color: var(--text-muted);" id="conv-total-count">Total Conversations: 0</div>
         </div>
-        <div style="max-height: 260px; overflow-y: auto;">
+        <div style="max-height: 460px; overflow-y: auto;">
           <table class="ui-table">
             <thead>
               <tr>
@@ -427,7 +451,10 @@
               </tr>
             </thead>
             <tbody id="conversations-tbody">
-              <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No conversation logs recorded yet.</td></tr>
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted);">No conversation logs recorded yet.
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -437,7 +464,8 @@
       <div class="ui-card">
         <div class="card-header">
           <div class="card-title" id="events-table-title">📜 Conversation Event Trace</div>
-          <span style="font-size: 0.8rem; color: var(--text-muted);">Click any row to inspect raw payload &amp; response</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Click any row to inspect raw payload &amp;
+            response</span>
         </div>
         <div style="max-height: 380px; overflow-y: auto;">
           <table class="ui-table">
@@ -451,7 +479,10 @@
               </tr>
             </thead>
             <tbody id="events-tbody">
-              <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Select a conversation above to view event logs.</td></tr>
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted);">Select a conversation above to
+                  view event logs.</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -467,9 +498,12 @@
     <div class="modal-dialog">
       <div class="modal-header">⚠️ Warning: Shutdown App &amp; Services</div>
       <div class="modal-body">
-        This action will shutdown the app and all the services started by the app. All users will be affected by this action.
-        <p style="margin-top: 10px; font-weight: 600;">Confirm by typing <span style="color: var(--accent-rose);">“Shutdown the service”</span> below:</p>
-        <input type="text" id="shutdown-confirm-input" class="confirm-input" placeholder="Shutdown the service" oninput="validateShutdownConfirm(this.value)">
+        This action will shutdown the app and all the services started by the app. All users will be affected by this
+        action.
+        <p style="margin-top: 10px; font-weight: 600;">Confirm by typing <span
+            style="color: var(--accent-rose);">“Shutdown the service”</span> below:</p>
+        <input type="text" id="shutdown-confirm-input" class="confirm-input" placeholder="Shutdown the service"
+          oninput="validateShutdownConfirm(this.value)">
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeModal('modal-shutdown')">Cancel</button>
@@ -483,13 +517,17 @@
     <div class="modal-dialog">
       <div class="modal-header" style="color: var(--accent-rose);">⚠️ Stern Warning: Delete Vector Data</div>
       <div class="modal-body">
-        Changing the embedding model will <strong>delete all vector data</strong> currently stored in the document and skill databases!
-        <p style="margin-top: 10px;">To confirm, please type <span style="color: var(--accent-rose); font-weight: 600;">“Delete Data and Switch”</span>:</p>
-        <input type="text" id="model-switch-confirm-input" class="confirm-input" placeholder="Delete Data and Switch" oninput="validateModelSwitchConfirm(this.value)">
+        Changing the embedding model will <strong>delete all vector data</strong> currently stored in the document and
+        skill databases!
+        <p style="margin-top: 10px;">To confirm, please type <span
+            style="color: var(--accent-rose); font-weight: 600;">“Delete Data and Switch”</span>:</p>
+        <input type="text" id="model-switch-confirm-input" class="confirm-input" placeholder="Delete Data and Switch"
+          oninput="validateModelSwitchConfirm(this.value)">
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="cancelModelSwitch()">Cancel</button>
-        <button id="btn-confirm-switch-model" class="btn-danger" disabled onclick="executeModelSwitch()">Delete Data</button>
+        <button id="btn-confirm-switch-model" class="btn-danger" disabled onclick="executeModelSwitch()">Delete
+          Data</button>
       </div>
     </div>
   </div>
@@ -523,4 +561,5 @@
 
   <script src="/static/js/app.js"></script>
 </body>
+
 </html>

@@ -1,6 +1,6 @@
 ---
 name: Person Information Skill
-description: Query the employee and staff registry flat-file CSV to look up personal records, including person name, city, country, or job title.
+description: Look up personal records, including person name, city and country where they live, or job title.
 Trigger Queries:
   - Who lives in Tokyo according to the registry?
   - What is the job title of Alex Morgan?

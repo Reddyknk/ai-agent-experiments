@@ -123,9 +123,25 @@ async function loadModelsList() {
     if (data.last_custom_endpoint) {
       document.getElementById('chat-custom-endpoint').value = data.last_custom_endpoint;
     }
+
+    const defaultModel = data.default_model || 'gemma-4-26b-a4b-it';
+    if (defaultModel && Array.from(select.options).some(o => o.value === defaultModel)) {
+      select.value = defaultModel;
+    }
     onModelChange();
   } catch (e) {
     console.error('Failed to load model list:', e);
+  }
+}
+
+function clampMaxTokens(el) {
+  const select = document.getElementById('chat-model-select');
+  const selectedModel = select ? select.value : 'gemma-4-26b-a4b-it';
+  const modelMaxLimit = modelMaxTokensMap[selectedModel] || 8192;
+  el.max = modelMaxLimit;
+  const val = parseInt(el.value, 10);
+  if (val > modelMaxLimit) {
+    el.value = modelMaxLimit;
   }
 }
 
@@ -155,7 +171,12 @@ async function sendChatMessage() {
 
   const model = document.getElementById('chat-model-select').value;
   const temperature = parseFloat(document.getElementById('chat-temperature').value) || 0.7;
-  const maxTokens = parseInt(document.getElementById('chat-max-tokens').value, 10) || 2048;
+  const modelMaxLimit = modelMaxTokensMap[model] || 8192;
+  let maxTokens = parseInt(document.getElementById('chat-max-tokens').value, 10) || 2048;
+  if (maxTokens > modelMaxLimit) {
+    maxTokens = modelMaxLimit;
+    document.getElementById('chat-max-tokens').value = modelMaxLimit;
+  }
   const maxRagChunks = parseInt(document.getElementById('rag-max-chunks').value, 10) || 5;
   const customEndpoint = document.getElementById('chat-custom-endpoint').value;
 
@@ -195,7 +216,8 @@ async function sendChatMessage() {
       appendChatMessage(
         'agent',
         respData.answer,
-        `Conv ID: ${respData.conversation_id} | Model: ${respData.model_used} | Tokens: ${respData.tokens.input} in, ${respData.tokens.output} out | Latency: ${respData.latency_ms}ms`
+        `Conv ID: ${respData.conversation_id} | Model: ${respData.model_used} | Tokens: ${respData.tokens.input} in, ${respData.tokens.output} out | Latency: ${respData.latency_ms}ms`,
+        respData.steps || []
       );
 
       // Render retrieved context evidence
@@ -211,11 +233,97 @@ async function sendChatMessage() {
   }
 }
 
-function appendChatMessage(sender, text, metaText = '') {
+function appendChatMessage(sender, text, metaText = '', steps = []) {
   const history = document.getElementById('chat-history');
   const msgDiv = document.createElement('div');
   msgDiv.className = `chat-message ${sender}`;
-  msgDiv.textContent = text;
+
+  const textDiv = document.createElement('div');
+  textDiv.className = 'message-content';
+  textDiv.textContent = text;
+  msgDiv.appendChild(textDiv);
+
+  // Add response logs box with Show Logs button, component bubbles, and collapsible step logs
+  if (steps && steps.length > 0) {
+    const box = document.createElement('div');
+    box.className = 'response-logs-box';
+
+    const header = document.createElement('div');
+    header.className = 'logs-box-header';
+
+    const bubblesRow = document.createElement('div');
+    bubblesRow.className = 'component-bubbles-row';
+
+    steps.forEach((step) => {
+      const bubble = document.createElement('div');
+      bubble.className = 'component-bubble';
+      bubble.innerHTML = `
+        <span class="bubble-icon">${escapeHtml(step.icon || '⚙️')}</span>
+        <span class="bubble-name">${escapeHtml(step.component || step.step_name)}</span>
+        <span class="bubble-time">⏱️ ${step.elapsed_ms}ms</span>
+      `;
+      bubblesRow.appendChild(bubble);
+    });
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'btn-show-logs';
+    toggleBtn.textContent = 'Show Logs';
+    toggleBtn.onclick = function() { toggleShowLogs(this); };
+
+    header.appendChild(bubblesRow);
+    header.appendChild(toggleBtn);
+    box.appendChild(header);
+
+    // Collapsible container to expand and show full content of the step including logs
+    const collapsible = document.createElement('div');
+    collapsible.className = 'logs-collapsible-content';
+    collapsible.style.display = 'none';
+
+    steps.forEach((step) => {
+      const stepCard = document.createElement('div');
+      stepCard.className = 'step-detail-bubble';
+
+      let logsHtml = '';
+      if (step.logs && step.logs.length > 0) {
+        logsHtml = step.logs.map(log => `
+          <div class="step-log-item">
+            <div class="log-meta">
+              <span class="evidence-badge" style="font-size: 0.7rem; padding: 1px 5px;">[${escapeHtml(log.call_type || 'event')}]</span>
+              <strong>${escapeHtml(log.event_type || '')}</strong>:
+              <span>${escapeHtml(log.invoker || '')} ➔ ${escapeHtml(log.recipient || log.target || '')}</span>
+              <span style="color: var(--text-muted); font-size: 0.72rem;">(${escapeHtml(log.timestamp ? log.timestamp.split('T')[1].slice(0, 8) : '')})</span>
+            </div>
+            <div class="log-desc">${escapeHtml(log.description || '')}</div>
+            <pre class="log-payload-json">${escapeHtml(JSON.stringify(log.payload, null, 2))}</pre>
+          </div>
+        `).join('');
+      } else {
+        logsHtml = `<div style="color: var(--text-muted); font-size: 0.8rem; padding: 4px;">No detailed log records captured for this step.</div>`;
+      }
+
+      stepCard.innerHTML = `
+        <div class="step-detail-header">
+          <div class="step-detail-title">
+            <span class="step-detail-icon">${escapeHtml(step.icon || '⚙️')}</span>
+            <strong>${escapeHtml(step.component || step.step_name)}</strong>
+          </div>
+          <span class="step-detail-time">⏱️ ${step.elapsed_ms}ms</span>
+        </div>
+        <div class="step-bubble-scroll-area">
+          <div class="step-summary"><strong>Summary:</strong> ${escapeHtml(step.summary || '')}</div>
+          <div class="step-logs-wrapper">
+            <div class="step-logs-header">📋 Step Logs &amp; Payloads:</div>
+            ${logsHtml}
+          </div>
+        </div>
+      `;
+      collapsible.appendChild(stepCard);
+    });
+
+    box.appendChild(collapsible);
+    msgDiv.appendChild(box);
+  }
 
   if (metaText) {
     const metaDiv = document.createElement('div');
@@ -227,6 +335,17 @@ function appendChatMessage(sender, text, metaText = '') {
   history.appendChild(msgDiv);
   history.scrollTop = history.scrollHeight;
   return msgDiv;
+}
+
+function toggleShowLogs(btn) {
+  const box = btn.closest('.response-logs-box');
+  if (!box) return;
+  const content = box.querySelector('.logs-collapsible-content');
+  if (!content) return;
+  const isHidden = content.style.display === 'none';
+  content.style.display = isHidden ? 'flex' : 'none';
+  btn.textContent = isHidden ? 'Hide Logs' : 'Show Logs';
+  btn.classList.toggle('active', isHidden);
 }
 
 function renderRetrievedEvidence(evidenceList) {
@@ -724,11 +843,12 @@ async function fetchLogsData(selectedConvId = null) {
       events.forEach((ev, idx) => {
         const tr = document.createElement('tr');
         const localTime = new Date(ev.timestamp).toLocaleTimeString();
+        const callTypeTag = ev.call_type ? `<span style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; background: ${ev.call_type === 'response' ? 'rgba(16, 185, 129, 0.15); color: #34d399;' : 'rgba(99, 102, 241, 0.15); color: #818cf8;'}">${escapeHtml(ev.call_type)}</span>` : '';
         tr.innerHTML = `
           <td>${localTime}</td>
-          <td><span class="evidence-badge">${escapeHtml(ev.event_type)}</span></td>
+          <td><span class="evidence-badge">${escapeHtml(ev.event_type)}</span>${callTypeTag}</td>
           <td>${escapeHtml(ev.invoker)}</td>
-          <td>${escapeHtml(ev.target)}</td>
+          <td>${escapeHtml(ev.target || ev.recipient || '')}</td>
           <td>${escapeHtml(ev.description || '')}</td>
         `;
         tr.style.cursor = 'pointer';
@@ -746,7 +866,8 @@ function openJsonModal(eventIndex) {
   const ev = allEventsCache[eventIndex];
   if (!ev) return;
 
-  document.getElementById('json-modal-title').textContent = `${ev.event_type} (${ev.invoker} ➔ ${ev.target})`;
+  const callTypeStr = ev.call_type ? ` [${ev.call_type.toUpperCase()}]` : '';
+  document.getElementById('json-modal-title').textContent = `${ev.event_type}${callTypeStr} (${ev.invoker} ➔ ${ev.target || ev.recipient})`;
   document.getElementById('json-modal-content').textContent = JSON.stringify(ev, null, 2);
   openModal('modal-json-detail');
 }

@@ -27,7 +27,7 @@ LOG_FILE = DATABASE_DIR / "log.json"
 TELEMETRY_FILE = DATABASE_DIR / "telemetry.json"
 
 # Score Thresholds
-MIN_SKILL_SCORE = 0.5
+MIN_SKILL_SCORE = 0.1
 MIN_RAG_DOC_SCORE = 0.3
 
 # Default Chunking Parameters
@@ -79,12 +79,10 @@ SUPPORTED_EMBEDDING_MODELS = [
 
 # Google AI Studio / Gemini Models
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
+DEFAULT_LLM_MODEL = "gemma-4-26b-a4b-it"
 GOOGLE_AI_MODELS = [
-    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "max_tokens": 8192},
-    {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "max_tokens": 8192},
-    {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash", "max_tokens": 8192},
-    {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro", "max_tokens": 8192},
-    {"id": "custom", "name": "Custom Model (Endpoint)", "max_tokens": 4096},
+    {"id": "gemma-4-26b-a4b-it", "name": "Gemma 4 26B A4B It", "max_tokens": 8192},
+    {"id": "gemini-flash-lite-latest", "name": "Gemini Flash Lite Latest", "max_tokens": 8192},
 ]
 DEFAULT_CUSTOM_ENDPOINT = "http://127.0.0.1:8000/v1/chat/completions"
 

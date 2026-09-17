@@ -8,12 +8,13 @@ import os
 import time
 import requests
 from typing import List, Dict, Any, Optional
-from config import GEMINI_API_KEY, GOOGLE_AI_MODELS, DEFAULT_CUSTOM_ENDPOINT
+from config import GEMINI_API_KEY, GOOGLE_AI_MODELS, DEFAULT_CUSTOM_ENDPOINT, DEFAULT_LLM_MODEL
 from services.log_service import audit_logger
 
 class LLMService:
     def __init__(self):
         self.last_custom_endpoint = DEFAULT_CUSTOM_ENDPOINT
+        self._cached_models: Optional[List[Dict[str, Any]]] = None
 
     @property
     def api_key(self):
@@ -23,28 +24,40 @@ class LLMService:
     def list_available_models(self) -> List[Dict[str, Any]]:
         """
         Query Google AI Studio for active text-generation models via API if key is present.
+        Only includes active text generation models (excluding audio, image, tts, robotics).
+        Places DEFAULT_LLM_MODEL at the top as the default.
         """
         models = []
         key = self.api_key
+        excluded_keywords = ["tts", "image", "clip", "lyria", "transcribe", "robotics", "computer-use", "banana"]
+
         if key:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
                 res = requests.get(url, timeout=5)
-                audit_logger.log_event(
-                    event_type="External API Request",
+                audit_logger.log_call(
+                    event_type="external API call",
+                    call_type="invocation",
                     invoker="agent",
-                    target="external API call",
+                    recipient="external API call",
                     payload={"action": "list_models", "url": "https://generativelanguage.googleapis.com/v1beta/models?key=****"},
-                    response={"status_code": res.status_code, "model_count": len(res.json().get("models", [])) if res.status_code == 200 else 0},
                     description="Queried Google AI Studio API for active models"
                 )
                 if res.status_code == 200:
                     data = res.json()
+                    audit_logger.log_call(
+                        event_type="external API call",
+                        call_type="response",
+                        invoker="external API call",
+                        recipient="agent",
+                        payload={"status_code": 200, "model_count": len(data.get("models", []))},
+                        description="Received active models from Google AI Studio API"
+                    )
                     for m in data.get("models", []):
                         methods = m.get("supportedGenerationMethods", [])
                         m_name = m.get("name", "").replace("models/", "")
-                        # Filter for active LLM text generation models
-                        if "generateContent" in methods and "tts" not in m_name and "image" not in m_name:
+                        # Filter strictly for active LLM text generation models
+                        if "generateContent" in methods and not any(ex in m_name.lower() for ex in excluded_keywords):
                             max_tok = m.get("outputTokenLimit", 8192)
                             models.append({
                                 "id": m_name,
@@ -54,19 +67,30 @@ class LLMService:
             except Exception as e:
                 print(f"[LLMService] Google AI Studio model list error: {e}")
 
-        # If no models retrieved, fall back to active standard models catalog
+        # If no models retrieved, fall back to configured models
         if not models:
-            models = list(GOOGLE_AI_MODELS[:-1])
+            models = list(GOOGLE_AI_MODELS)
+
+        # Ensure DEFAULT_LLM_MODEL is present and at the top
+        default_item = next((m for m in models if m["id"] == DEFAULT_LLM_MODEL), None)
+        if default_item:
+            models.remove(default_item)
+            models.insert(0, default_item)
+        else:
+            models.insert(0, {"id": DEFAULT_LLM_MODEL, "name": "Gemma 4 26B A4B IT", "max_tokens": 8192})
 
         # Always append Custom model option
-        models.append({"id": "custom", "name": "Custom Model (Endpoint)", "max_tokens": 4096})
+        if not any(m["id"] == "custom" for m in models):
+            models.append({"id": "custom", "name": "Custom Model (Endpoint)", "max_tokens": 4096})
+
+        self._cached_models = models
         return models
 
     def generate_response(
         self,
         prompt: str,
         system_instruction: str = "",
-        model: str = "gemini-2.5-flash",
+        model: str = DEFAULT_LLM_MODEL,
         temperature: float = 0.7,
         max_tokens: int = 2048,
         custom_endpoint: Optional[str] = None,
@@ -102,26 +126,23 @@ class LLMService:
                     output_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     output_tokens = len(output_text.split())
 
-                    # Log external API call
-                    audit_logger.log_event(
-                        event_type="External API Request",
+                    # Log LLM invocation & response with FULL payload (Do not log API call for model access per SPECIFICATION.md)
+                    audit_logger.log_call(
+                        event_type="LLM",
+                        call_type="invocation",
                         invoker="agent",
-                        target="external API call",
-                        payload={"endpoint": endpoint, "model": "custom"},
-                        response={"status_code": res.status_code},
-                        description="Called custom OpenAI-compatible endpoint",
-                        conversation_id=conversation_id,
-                        latency_ms=latency
+                        recipient="LLM",
+                        payload={"model": "custom", "endpoint": endpoint, "prompt": prompt, "system_instruction": system_instruction, "temperature": temperature, "max_tokens": max_tokens, "request_body": payload},
+                        description="Prompts sent to custom model with full payload",
+                        conversation_id=conversation_id
                     )
-
-                    # Log prompt sent to and response received from the model
-                    audit_logger.log_event(
-                        event_type="Model Invocation",
-                        invoker="agent",
-                        target="prompts sent to and response received from the model",
-                        payload={"model": "custom", "prompt": prompt, "system_instruction": system_instruction, "temperature": temperature, "max_tokens": max_tokens},
-                        response={"content": output_text, "input_tokens": input_tokens, "output_tokens": output_tokens},
-                        description="Prompt sent to and response received from custom model",
+                    audit_logger.log_call(
+                        event_type="LLM",
+                        call_type="response",
+                        invoker="LLM",
+                        recipient="agent",
+                        payload={"content": output_text, "raw_response": data, "input_tokens": input_tokens, "output_tokens": output_tokens},
+                        description="Response received from custom model with full payload",
                         conversation_id=conversation_id,
                         latency_ms=latency
                     )
@@ -137,17 +158,7 @@ class LLMService:
                     raise RuntimeError(f"Custom endpoint returned status {res.status_code}: {res.text}")
             except Exception as e:
                 latency = (time.time() - start_time) * 1000
-                audit_logger.log_event(
-                    event_type="LLM Error",
-                    invoker="agent",
-                    target="external API call",
-                    payload={"endpoint": endpoint},
-                    response={"error": str(e)},
-                    description=f"Custom endpoint error: {e}",
-                    conversation_id=conversation_id,
-                    latency_ms=latency,
-                    status="error"
-                )
+                print(f"[LLMService] Custom endpoint exception: {e}")
 
         # Case 2: Google AI Studio Gemini API
         key = self.api_key
@@ -164,6 +175,17 @@ class LLMService:
             if system_instruction:
                 payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
+            # Log LLM prompts sent to model with FULL payload (Do not log API call for model access per SPECIFICATION.md)
+            audit_logger.log_call(
+                event_type="LLM",
+                call_type="invocation",
+                invoker="agent",
+                recipient="LLM",
+                payload={"model": clean_model, "prompt": prompt, "system_instruction": system_instruction, "temperature": temperature, "max_tokens": max_tokens, "url": f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key=****", "request_body": payload},
+                description=f"Prompts sent to model {clean_model} with full payload",
+                conversation_id=conversation_id
+            )
+
             try:
                 res = requests.post(url, json=payload, timeout=30)
                 latency = (time.time() - start_time) * 1000
@@ -175,26 +197,14 @@ class LLMService:
                         output_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                     output_tokens = len(output_text.split())
 
-                    # Log external API call
-                    audit_logger.log_event(
-                        event_type="External API Request",
-                        invoker="agent",
-                        target="external API call",
-                        payload={"url": f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key=****", "model": clean_model},
-                        response={"status_code": res.status_code},
-                        description=f"Google AI Studio API call for model {clean_model}",
-                        conversation_id=conversation_id,
-                        latency_ms=latency
-                    )
-
-                    # Log prompts sent to and response received from the model
-                    audit_logger.log_event(
-                        event_type="Model Invocation",
-                        invoker="agent",
-                        target="prompts sent to and response received from the model",
-                        payload={"model": clean_model, "prompt": prompt, "system_instruction": system_instruction, "temperature": temperature, "max_tokens": max_tokens},
-                        response={"content": output_text, "input_tokens": input_tokens, "output_tokens": output_tokens},
-                        description=f"Prompts sent to and response received from {clean_model}",
+                    # Log LLM response received from model with FULL payload
+                    audit_logger.log_call(
+                        event_type="LLM",
+                        call_type="response",
+                        invoker="LLM",
+                        recipient="agent",
+                        payload={"content": output_text, "full_api_response": data, "input_tokens": input_tokens, "output_tokens": output_tokens, "model": clean_model},
+                        description=f"Response received from model {clean_model} with full payload",
                         conversation_id=conversation_id,
                         latency_ms=latency
                     )
@@ -210,17 +220,7 @@ class LLMService:
                     raise RuntimeError(f"Google AI Studio error {res.status_code}: {res.text}")
             except Exception as e:
                 latency = (time.time() - start_time) * 1000
-                audit_logger.log_event(
-                    event_type="LLM Error",
-                    invoker="agent",
-                    target="external API call",
-                    payload={"model": model},
-                    response={"error": str(e)},
-                    description=f"Google AI Studio API error: {e}",
-                    conversation_id=conversation_id,
-                    latency_ms=latency,
-                    status="error"
-                )
+                print(f"[LLMService] Google AI Studio API error: {e}")
 
         # Case 3: Offline Intelligent Synthesis Engine
         # Synthesizes response based on provided prompt & context evidence
@@ -228,13 +228,25 @@ class LLMService:
         synthesis = self._synthesize_offline(prompt, system_instruction)
         output_tokens = len(synthesis.split())
 
-        audit_logger.log_event(
-            event_type="LLM Synthesis",
-            invoker="Agent Orchestrator",
-            target=f"{model} (Synthesizer Engine)",
-            payload={"model": model, "temperature": temperature, "max_tokens": max_tokens},
-            response={"output_text": synthesis[:200]},
-            description=f"Synthesized response using {model}",
+        # Log LLM prompts sent to model with FULL payload
+        audit_logger.log_call(
+            event_type="LLM",
+            call_type="invocation",
+            invoker="agent",
+            recipient="LLM",
+            payload={"model": model, "prompt": prompt, "system_instruction": system_instruction, "temperature": temperature, "max_tokens": max_tokens},
+            description=f"Prompts sent to {model} with full payload",
+            conversation_id=conversation_id
+        )
+
+        # Log LLM response received from model with FULL payload
+        audit_logger.log_call(
+            event_type="LLM",
+            call_type="response",
+            invoker="LLM",
+            recipient="agent",
+            payload={"content": synthesis, "input_tokens": input_tokens, "output_tokens": output_tokens},
+            description=f"Response received from {model} with full payload",
             conversation_id=conversation_id,
             latency_ms=latency
         )

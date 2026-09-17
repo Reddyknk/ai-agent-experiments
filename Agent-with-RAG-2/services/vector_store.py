@@ -71,7 +71,7 @@ class VectorStore:
             if not self.db_path.exists() or self.db_path.stat().st_size == 0:
                 self.db_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(self.db_path, "w", encoding="utf-8") as f:
-                    json.dump({"documents": {}, "chunks": []}, f, indent=2)
+                    json.dump({"embedding_model": ollama_service.current_model, "documents": {}, "chunks": []}, f, indent=2)
 
     def _load(self) -> Dict[str, Any]:
         with self.lock:
@@ -81,18 +81,21 @@ class VectorStore:
                         return json.load(f)
             except Exception as e:
                 print(f"[VectorStore Load Error] {e}")
-            return {"documents": {}, "chunks": []}
+            return {"embedding_model": ollama_service.current_model, "documents": {}, "chunks": []}
 
     def _save(self, data: Dict[str, Any]):
         with self.lock:
+            if "embedding_model" not in data:
+                data["embedding_model"] = ollama_service.current_model
             with open(self.db_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
 
-    def reset(self):
-        """Clear all indexed records."""
+    def reset(self, embedding_model: Optional[str] = None):
+        """Clear all indexed records and record active embedding model."""
+        model = embedding_model or ollama_service.current_model
         with self.lock:
             with open(self.db_path, "w", encoding="utf-8") as f:
-                json.dump({"documents": {}, "chunks": []}, f, indent=2)
+                json.dump({"embedding_model": model, "documents": {}, "chunks": []}, f, indent=2)
 
     def get_stats(self) -> Dict[str, Any]:
         data = self._load()
@@ -113,6 +116,7 @@ class VectorStore:
             })
 
         return {
+            "embedding_model": data.get("embedding_model", ollama_service.current_model),
             "total_chunks": len(chunks),
             "total_documents": len(docs),
             "db_size_mb": file_size_mb,
@@ -313,11 +317,11 @@ class VectorStore:
         finally:
             self.is_ingesting = False
 
-    def query_similar(self, query_text: str, top_k: int = 5, min_score: float = MIN_RAG_DOC_SCORE, conversation_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def query_similar(self, query_text: str, top_k: int = 5, min_score: float = MIN_RAG_DOC_SCORE, conversation_id: Optional[str] = None, invoker: str = "vector database") -> List[Dict[str, Any]]:
         """
         Retrieve chunks exceeding min_score, sorted by cosine similarity descending.
         """
-        query_vec = ollama_service.generate_embedding(query_text, conversation_id=conversation_id)
+        query_vec = ollama_service.generate_embedding(query_text, conversation_id=conversation_id, invoker=invoker)
         data = self._load()
         chunks = data.get("chunks", [])
 

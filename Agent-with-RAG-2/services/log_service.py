@@ -57,31 +57,34 @@ class LogService:
                 with open(self.log_path, "w", encoding="utf-8") as f:
                     json.dump([], f, indent=2)
 
-    def log_event(
+    def log_call(
         self,
         event_type: str,
         invoker: str,
-        target: str,
+        recipient: str,
+        call_type: str,
         payload: Any,
-        response: Any,
         description: str = "",
         conversation_id: Optional[str] = None,
         latency_ms: float = 0.0,
         status: str = "success"
     ) -> Dict[str, Any]:
         """
-        Record an invocation event between user, agent, skill, tool, or external service.
+        Record an individual invocation or response event per SPECIFICATION.md:
+        - Include time of the call, type of the call, invoker, recipient, and raw payload passed.
+        - Each invocation/response is a separate entry in the log.
         """
         now_utc = datetime.now(timezone.utc)
         entry = {
             "id": f"log-{int(now_utc.timestamp() * 1000)}-{os.urandom(3).hex()}",
             "timestamp": datetime.now().isoformat(),
             "event_type": event_type,
+            "call_type": call_type,
             "invoker": invoker,
-            "target": target,
-            "description": description or f"{event_type}: {invoker} -> {target}",
+            "target": recipient,
+            "recipient": recipient,
+            "description": description or f"{call_type.capitalize()}: {invoker} -> {recipient}",
             "payload": redact_sensitive_data(payload),
-            "response": redact_sensitive_data(response),
             "conversation_id": conversation_id or "system",
             "latency_ms": round(latency_ms, 2),
             "status": status
@@ -100,6 +103,49 @@ class LogService:
                 print(f"[LogService Error] Failed to write log: {e}")
 
         return entry
+
+    def log_event(
+        self,
+        event_type: str,
+        invoker: str,
+        target: str,
+        payload: Any,
+        response: Any = None,
+        description: str = "",
+        conversation_id: Optional[str] = None,
+        latency_ms: float = 0.0,
+        status: str = "success"
+    ) -> Dict[str, Any]:
+        """
+        Record separate invocation and response entries per SPECIFICATION.md:
+        'Do not combine the logs of from the request and response into the same log entry'
+        """
+        inv_entry = self.log_call(
+            event_type=event_type,
+            invoker=invoker,
+            recipient=target,
+            call_type="invocation",
+            payload=payload,
+            description=description or f"Invocation: {invoker} -> {target}",
+            conversation_id=conversation_id,
+            status=status
+        )
+
+        if response is not None:
+            res_entry = self.log_call(
+                event_type=event_type,
+                invoker=target,
+                recipient=invoker,
+                call_type="response",
+                payload=response,
+                description=f"Response from {target} to {invoker}" if not description else f"Response: {description}",
+                conversation_id=conversation_id,
+                latency_ms=latency_ms,
+                status=status
+            )
+            return res_entry
+
+        return inv_entry
 
     def get_all_logs(self) -> List[Dict[str, Any]]:
         with _log_lock:
@@ -146,22 +192,33 @@ class LogService:
 
             conversations[cid]["total_events"] += 1
 
-            if entry.get("event_type") == "User Prompt":
-                if not conversations[cid]["user_query"]:
-                    if isinstance(entry.get("payload"), dict):
-                        conversations[cid]["user_query"] = entry.get("payload", {}).get("query", "")
-                    else:
-                        conversations[cid]["user_query"] = str(entry.get("payload", ""))
+            # Extract user query from invocation to agent
+            if entry.get("event_type") in ["agent", "User Prompt"]:
+                if entry.get("call_type") == "invocation" or entry.get("invoker") == "user":
+                    if not conversations[cid]["user_query"]:
+                        p = entry.get("payload", {})
+                        if isinstance(p, dict):
+                            conversations[cid]["user_query"] = p.get("query") or p.get("message", "")
+                        else:
+                            conversations[cid]["user_query"] = str(p)
 
-            if entry.get("event_type") in ["Agent Response", "LLM Synthesis"]:
-                if isinstance(entry.get("response"), dict):
-                    conversations[cid]["agent_response"] = entry.get("response", {}).get("content", "")
-                else:
-                    conversations[cid]["agent_response"] = str(entry.get("response", ""))
+            # Extract final agent response from response to user
+            if entry.get("event_type") in ["agent", "Agent Response", "LLM", "LLM Synthesis"]:
+                if entry.get("call_type") == "response" or entry.get("recipient") == "user":
+                    p = entry.get("payload", {})
+                    if isinstance(p, dict):
+                        resp = p.get("response") or p.get("content", "")
+                        if resp:
+                            conversations[cid]["agent_response"] = resp
+                    elif isinstance(entry.get("response"), dict):
+                        resp = entry.get("response", {}).get("content") or entry.get("response", {}).get("response", "")
+                        if resp:
+                            conversations[cid]["agent_response"] = resp
 
-            if entry.get("event_type") == "LLM Synthesis":
-                if isinstance(entry.get("payload"), dict):
-                    conversations[cid]["model_used"] = entry.get("payload", {}).get("model", "unknown")
+            if entry.get("event_type") in ["LLM", "LLM Synthesis"]:
+                p = entry.get("payload", {})
+                if isinstance(p, dict) and "model" in p:
+                    conversations[cid]["model_used"] = p.get("model", "unknown")
 
         # Sort conversations reverse chronologically
         conv_list = list(conversations.values())
@@ -174,9 +231,9 @@ class LogService:
 
     def get_statistics(self) -> Dict[str, Any]:
         logs = self.get_all_logs()
-        total_user_prompts = sum(1 for l in logs if l.get("event_type") == "User Prompt")
-        total_model_calls = sum(1 for l in logs if "LLM" in l.get("event_type", ""))
-        total_ollama_embeds = sum(1 for l in logs if "Ollama" in l.get("event_type", "") or "Embed" in l.get("event_type", ""))
+        total_user_prompts = sum(1 for l in logs if l.get("event_type") in ["User Prompt", "agent"] and (l.get("call_type") == "invocation" or l.get("invoker") == "user"))
+        total_model_calls = sum(1 for l in logs if "LLM" in l.get("event_type", "") and (l.get("call_type") == "invocation" or l.get("invoker") == "agent"))
+        total_ollama_embeds = sum(1 for l in logs if ("ollama vector" in l.get("event_type", "").lower() or "embed" in l.get("event_type", "").lower()) and l.get("call_type") == "invocation")
 
         latencies = [l.get("latency_ms", 0) for l in logs if l.get("latency_ms", 0) > 0]
         avg_latency = round(sum(latencies) / len(latencies), 2) if latencies else 0.0

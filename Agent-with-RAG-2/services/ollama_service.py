@@ -176,16 +176,26 @@ class OllamaService:
             )
             return False
 
-    def generate_embedding(self, text: str, model_name: Optional[str] = None, conversation_id: Optional[str] = None) -> List[float]:
+    def generate_embedding(self, text: str, model_name: Optional[str] = None, conversation_id: Optional[str] = None, invoker: str = "vector database") -> List[float]:
         """
         Generate dense vector embedding for input text.
-        Logs interactions between 'vector database' and 'ollamavector model'.
+        Logs interactions between invoker ('skill search' or 'document search') and 'ollama vector'.
         """
         target_model = model_name or self.current_model
         start_time = time.time()
 
-        payload = {"model": target_model, "prompt": text}
+        payload = {"model": target_model, "vectorizer": target_model, "prompt": text}
         first_50_chars = text[:50]
+        audit_logger.log_call(
+            event_type="ollama vector",
+            call_type="invocation",
+            invoker=invoker,
+            recipient="ollama vector",
+            payload={"vectorizer": target_model, "text_chunk_first_50": first_50_chars, "total_characters": len(text)},
+            description=f"Log first 50 characters sent for embedding to vectorizer {target_model}: '{first_50_chars}'",
+            conversation_id=conversation_id
+        )
+
         try:
             res = requests.post(f"{self.base_url}/api/embeddings", json=payload, timeout=30)
             latency = (time.time() - start_time) * 1000
@@ -193,13 +203,13 @@ class OllamaService:
             if res.status_code == 200:
                 data = res.json()
                 embedding = data.get("embedding", [])
-                audit_logger.log_event(
-                    event_type="Ollama Embedding",
-                    invoker="vector database",
-                    target="ollama vector",
-                    payload={"model": target_model, "text_chunk_first_50": first_50_chars, "total_characters": len(text)},
-                    response={"status": "success", "model": target_model, "dimensions": len(embedding)},
-                    description=f"Generated embedding vector ({len(embedding)} dims) via {target_model}",
+                audit_logger.log_call(
+                    event_type="ollama vector",
+                    call_type="response",
+                    invoker="ollama vector",
+                    recipient=invoker,
+                    payload={"status": "success", "vectorizer": target_model, "response": {"status": "success", "dimensions": len(embedding), "model": target_model}},
+                    description=f"Log response from vectorizer {target_model} ({len(embedding)} dimensions, vectors omitted)",
                     conversation_id=conversation_id,
                     latency_ms=latency
                 )
@@ -212,13 +222,13 @@ class OllamaService:
                 embeddings = data2.get("embeddings", [])
                 embedding = embeddings[0] if embeddings else []
                 latency = (time.time() - start_time) * 1000
-                audit_logger.log_event(
-                    event_type="Ollama Embedding",
-                    invoker="vector database",
-                    target="ollama vector",
-                    payload={"model": target_model, "text_chunk_first_50": first_50_chars, "total_characters": len(text)},
-                    response={"status": "success", "model": target_model, "dimensions": len(embedding)},
-                    description=f"Generated embedding vector ({len(embedding)} dims) via {target_model}",
+                audit_logger.log_call(
+                    event_type="ollama vector",
+                    call_type="response",
+                    invoker="ollama vector",
+                    recipient=invoker,
+                    payload={"status": "success", "vectorizer": target_model, "response": {"status": "success", "dimensions": len(embedding), "model": target_model}},
+                    description=f"Log response from vectorizer {target_model} ({len(embedding)} dimensions, vectors omitted)",
                     conversation_id=conversation_id,
                     latency_ms=latency
                 )
@@ -228,12 +238,12 @@ class OllamaService:
 
         except Exception as e:
             latency = (time.time() - start_time) * 1000
-            audit_logger.log_event(
-                event_type="Ollama Embed Error",
-                invoker="vector database",
-                target="ollama vector",
-                payload={"model": target_model, "text_chunk_first_50": first_50_chars, "total_characters": len(text)},
-                response={"error": str(e)},
+            audit_logger.log_call(
+                event_type="ollama vector",
+                call_type="response",
+                invoker="ollama vector",
+                recipient=invoker,
+                payload={"status": "error", "error": str(e)},
                 description=f"Embedding error: {e}",
                 conversation_id=conversation_id,
                 latency_ms=latency,

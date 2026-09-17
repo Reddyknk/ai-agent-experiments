@@ -29,12 +29,16 @@ def startup_initialization():
     Perform startup checks per specification:
     1. Check if ollama is currently running and start it if not.
     2. Scan skills/ folder and load skills not currently in database.
+    3. Get list of ONLY active LLM models for text generation from Google AI Studio API.
     """
     print("[Agent-with-RAG] Checking Ollama service status...")
     ollama_service.ensure_service_started()
 
     print("[Agent-with-RAG] Scanning skills/ directory...")
     skill_manager.scan_and_load_skills()
+
+    print("[Agent-with-RAG] Fetching active text generation models from Google AI Studio...")
+    llm_service.list_available_models()
     print("[Agent-with-RAG] Startup initialization complete.")
 
 def shutdown_handler():
@@ -123,6 +127,7 @@ def get_models():
     models = llm_service.list_available_models()
     return jsonify({
         "models": models,
+        "default_model": config.DEFAULT_LLM_MODEL,
         "last_custom_endpoint": llm_service.last_custom_endpoint
     })
 
@@ -137,7 +142,7 @@ def chat():
     if not query:
         return jsonify({"status": "error", "message": "Query cannot be empty"}), 400
 
-    model = data.get("model", "gemini-2.5-flash")
+    model = data.get("model", config.DEFAULT_LLM_MODEL)
     temperature = float(data.get("temperature", 0.7))
     max_tokens = int(data.get("max_tokens", 2048))
     max_rag_chunks = int(data.get("max_rag_chunks", 5))

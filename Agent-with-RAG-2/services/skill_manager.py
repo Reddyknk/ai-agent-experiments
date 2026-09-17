@@ -77,9 +77,14 @@ class SkillManager:
                 continue
             skill_folder_name = item.name
 
-            if skill_folder_name in existing_skill_folders:
+            existing_chunk = next((c for c in existing_data.get("chunks", []) if c.get("id") == f"skill-{skill_folder_name}"), None)
+            if existing_chunk and existing_chunk.get("model") == ollama_service.current_model and len(existing_chunk.get("vector", [])) in [384, 768, 1024]:
                 skipped.append(skill_folder_name)
                 continue
+
+            # If existing but needs re-embedding due to model change/empty vector, remove prior chunk
+            if existing_chunk:
+                existing_data["chunks"] = [c for c in existing_data["chunks"] if c.get("id") != f"skill-{skill_folder_name}"]
 
             parsed = parse_skill_markdown(item)
             if not parsed:
@@ -97,6 +102,7 @@ class SkillManager:
                 "content_hash": skill_folder_name,
                 "text": parsed["full_text"],
                 "vector": vector,
+                "model": ollama_service.current_model,
                 "metadata": {
                     "folder_name": skill_folder_name,
                     "name": parsed["name"],
@@ -132,12 +138,12 @@ class SkillManager:
             "total_skills": len(existing_data.get("chunks", []))
         }
 
-    def match_skills(self, user_query: str, min_score: float = MIN_SKILL_SCORE) -> List[Dict[str, Any]]:
+    def match_skills(self, user_query: str, min_score: float = MIN_SKILL_SCORE, conversation_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Query the skill vector database.
         Returns skills with similarity score > min_score (default 0.5).
         """
-        results = skill_vector_store.query_similar(user_query, top_k=5, min_score=min_score)
+        results = skill_vector_store.query_similar(user_query, top_k=5, min_score=min_score, conversation_id=conversation_id, invoker="skill search")
         matched = []
         for r in results:
             meta = r.get("metadata", {})
@@ -176,26 +182,37 @@ class SkillManager:
                     city = " ".join(words).strip() or "Tokyo"
 
                     # Log invocation from skill to tool
-                    audit_logger.log_event(
-                        event_type="Tool Invocation",
+                    audit_logger.log_call(
+                        event_type="tool",
+                        call_type="invocation",
                         invoker="skill",
-                        target="tool",
+                        recipient="tool",
                         payload={"tool": "env_tools.py", "function": "get_weather_and_time", "city": city},
-                        response={"status": "invoking"},
-                        description=f"Skill '{skill_name}' invoking tool for city: {city}",
+                        description=f"Tool message passed to env_tools.py for city: {city}",
+                        conversation_id=conversation_id
+                    )
+
+                    # Log external API call invocation from tool
+                    audit_logger.log_call(
+                        event_type="external API call",
+                        call_type="invocation",
+                        invoker="tool",
+                        recipient="external API call",
+                        payload={"api": "Open-Meteo", "city": city, "geocoding_url": "https://geocoding-api.open-meteo.com/v1/search"},
+                        description=f"Full payload passed to Open-Meteo API for {city}",
                         conversation_id=conversation_id
                     )
 
                     result_data = mod.get_weather_and_time(city)
 
-                    # Log external API call result from tool
-                    audit_logger.log_event(
-                        event_type="External API Request",
-                        invoker="tool",
-                        target="external API call",
-                        payload={"api": "Open-Meteo", "city": city},
-                        response={"status": result_data.get("status"), "data": result_data},
-                        description=f"Tool queried Open-Meteo API for {city}",
+                    # Log external API call response
+                    audit_logger.log_call(
+                        event_type="external API call",
+                        call_type="response",
+                        invoker="external API call",
+                        recipient="tool",
+                        payload=result_data,
+                        description=f"Full response received from Open-Meteo API for {city}",
                         conversation_id=conversation_id
                     )
 
@@ -214,13 +231,13 @@ class SkillManager:
                     search_words = [w for w in user_query.split() if w.lower() not in ["who", "where", "is", "the", "find", "all", "what", "job", "title", "of", "person", "in", "lives"]]
                     kw = " ".join(search_words).strip()
 
-                    audit_logger.log_event(
-                        event_type="Tool Invocation",
+                    audit_logger.log_call(
+                        event_type="tool",
+                        call_type="invocation",
                         invoker="skill",
-                        target="tool",
-                        payload={"tool": "person_search.py", "keyword": kw},
-                        response={"status": "invoking"},
-                        description=f"Skill '{skill_name}' searching registry for keyword: {kw}",
+                        recipient="tool",
+                        payload={"tool": "person_search.py", "function": "query_person_registry", "keyword": kw},
+                        description=f"Tool message passed to person_search.py for keyword: '{kw}'",
                         conversation_id=conversation_id
                     )
 
@@ -242,13 +259,13 @@ class SkillManager:
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
 
-                    audit_logger.log_event(
-                        event_type="Tool Invocation",
+                    audit_logger.log_call(
+                        event_type="tool",
+                        call_type="invocation",
                         invoker="skill",
-                        target="tool",
-                        payload={"tool": "stock_search.py", "query": user_query},
-                        response={"status": "invoking"},
-                        description=f"Skill '{skill_name}' analyzing market equities for: '{user_query}'",
+                        recipient="tool",
+                        payload={"tool": "stock_search.py", "function": "analyze_stock_query", "query": user_query},
+                        description=f"Tool message passed to stock_search.py for: '{user_query}'",
                         conversation_id=conversation_id
                     )
 
@@ -259,23 +276,18 @@ class SkillManager:
                 result_data = {"error": str(e)}
                 evidence_text = f"Skill execution error: {e}"
 
-        elif "retriever" in folder_name.lower() or "document" in folder_name.lower():
-            doc_matches = doc_vector_store.query_similar(user_query, top_k=3, conversation_id=conversation_id)
-            result_data = {"doc_matches": doc_matches}
-            evidence_text = f"Retrieved {len(doc_matches)} text chunks from document vector store."
-
         else:
             result_data = {"info": "Skill matched based on SOP triggers."}
             evidence_text = skill_info.get("description", "")
 
-        # Log completion from tool back to skill
-        audit_logger.log_event(
-            event_type="Tool Response",
+        # Log completion from tool back to skill (Response)
+        audit_logger.log_call(
+            event_type="tool",
+            call_type="response",
             invoker="tool",
-            target="skill",
-            payload={"skill": folder_name, "score": score},
-            response=result_data,
-            description=f"Tool returned execution results for {skill_name}",
+            recipient="skill",
+            payload=result_data,
+            description=f"Tool response received from {skill_name}",
             conversation_id=conversation_id
         )
 

@@ -3,6 +3,7 @@ Integration Tests for Flask API endpoints and sensitive key redaction.
 """
 import pytest
 import json
+import config
 from app import app
 from services.log_service import redact_sensitive_data, audit_logger
 
@@ -47,6 +48,16 @@ def test_vector_status_endpoint(client):
     assert "total_documents" in data
     assert "db_size_mb" in data
 
+def test_models_endpoint(client):
+    res = client.get("/api/models")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert "models" in data
+    assert "default_model" in data
+    assert data["default_model"] == "gemma-4-26b-a4b-it"
+    assert len(data["models"]) > 0
+    assert data["models"][0]["id"] == "gemma-4-26b-a4b-it"
+
 def test_ollama_models_endpoint(client):
     res = client.get("/api/ollama/models")
     assert res.status_code == 200
@@ -80,7 +91,7 @@ def test_chat_endpoint(client):
         "/api/chat",
         json={
             "query": "What is the weather in Tokyo?",
-            "model": "gemini-2.5-flash",
+            "model": config.DEFAULT_LLM_MODEL,
             "temperature": 0.5,
             "max_tokens": 1024,
             "max_rag_chunks": 3
@@ -91,6 +102,12 @@ def test_chat_endpoint(client):
     assert data["status"] == "success"
     assert "answer" in data["data"]
     assert "retrieved_evidence" in data["data"]
+    assert "steps" in data["data"]
+    assert len(data["data"]["steps"]) > 0
+    first_step = data["data"]["steps"][0]
+    assert "step_name" in first_step
+    assert "elapsed_ms" in first_step
+    assert "logs" in first_step
 
 def test_component_logging(client):
     # Perform chat inquiry that triggers weather skill, vector search, and model
@@ -98,7 +115,7 @@ def test_component_logging(client):
         "/api/chat",
         json={
             "query": "What is the weather in London right now?",
-            "model": "gemini-2.5-flash"
+            "model": config.DEFAULT_LLM_MODEL
         }
     )
     assert res.status_code == 200
@@ -114,17 +131,61 @@ def test_component_logging(client):
 
     invokers = {e.get("invoker") for e in events}
     targets = {e.get("target") for e in events}
+    event_types = {e.get("event_type") for e in events}
 
     # Verify component interactions logged per specification
     assert "user" in invokers or "user" in targets
     assert "agent" in invokers
-    assert "skill" in invokers or "skill" in targets
-    assert "tool" in invokers or "tool" in targets
-    assert "vector database" in invokers or "vector database" in targets
-    assert "ollamavector model" in invokers or "ollamavector model" in targets
+    assert "skill search" in event_types or "skill" in invokers or "skill" in targets
+    assert "tool" in event_types or "tool" in invokers or "tool" in targets
+    assert "ollama vector" in event_types or "ollama vector" in targets
+    assert "external API call" in event_types or "external API call" in targets
+    assert "LLM" in event_types or "LLM" in targets
+
+    # For a weather query, document search MUST NOT be called!
+    assert "document search" not in event_types
+
+    # Verify separate invocation and response entries
+    call_types = {e.get("call_type") for e in events}
+    assert "invocation" in call_types
+    assert "response" in call_types
 
     # Verify conversation list displays Number of Events
     convs = log_data.get("conversations", [])
     matching_conv = next((c for c in convs if c["conversation_id"] == conv_id), None)
     assert matching_conv is not None
     assert matching_conv["total_events"] > 0
+
+    # Test query that should NOT trigger document-retriever-skill or any tool: 'What is the capital city of Japan?'
+    res_general = client.post(
+        "/api/chat",
+        json={
+            "query": "What is the capital city of Japan?",
+            "model": config.DEFAULT_LLM_MODEL
+        }
+    )
+    assert res_general.status_code == 200
+    gen_conv_id = res_general.get_json()["data"]["conversation_id"]
+    gen_log_res = client.get(f"/api/logs?conversation_id={gen_conv_id}")
+    gen_events = gen_log_res.get_json().get("events", [])
+    gen_event_types = {e.get("event_type") for e in gen_events}
+    # Verify document search was NOT called for capital city query
+    assert "document search" not in gen_event_types
+    # Verify tool was NOT called for capital city query
+    assert "tool" not in gen_event_types
+
+    # Test query that DOES trigger document-retriever-skill
+    res_doc = client.post(
+        "/api/chat",
+        json={
+            "query": "Explain the architecture of Agent and RAG technology from our documents",
+            "model": config.DEFAULT_LLM_MODEL
+        }
+    )
+    assert res_doc.status_code == 200
+    doc_conv_id = res_doc.get_json()["data"]["conversation_id"]
+    doc_log_res = client.get(f"/api/logs?conversation_id={doc_conv_id}")
+    doc_events = doc_log_res.get_json().get("events", [])
+    doc_event_types = {e.get("event_type") for e in doc_events}
+    # Verify document search WAS called when document-retriever-skill matched
+    assert "document search" in doc_event_types
