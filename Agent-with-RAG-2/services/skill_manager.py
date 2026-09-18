@@ -77,21 +77,25 @@ class SkillManager:
                 continue
             skill_folder_name = item.name
 
-            existing_chunk = next((c for c in existing_data.get("chunks", []) if c.get("id") == f"skill-{skill_folder_name}"), None)
-            if existing_chunk and existing_chunk.get("model") == ollama_service.current_model and len(existing_chunk.get("vector", [])) in [384, 768, 1024]:
-                skipped.append(skill_folder_name)
-                continue
-
-            # If existing but needs re-embedding due to model change/empty vector, remove prior chunk
-            if existing_chunk:
-                existing_data["chunks"] = [c for c in existing_data["chunks"] if c.get("id") != f"skill-{skill_folder_name}"]
-
             parsed = parse_skill_markdown(item)
             if not parsed:
                 continue
 
-            # Embed name and description fields per SPECIFICATION.md
-            embed_text = f"{parsed['name']}. {parsed['description']}"
+            existing_chunk = next((c for c in existing_data.get("chunks", []) if c.get("id") == f"skill-{skill_folder_name}"), None)
+            if (existing_chunk 
+                and existing_chunk.get("model") == ollama_service.current_model 
+                and len(existing_chunk.get("vector", [])) in [384, 768, 1024]
+                and existing_chunk.get("text") == parsed.get("full_text")):
+                skipped.append(skill_folder_name)
+                continue
+
+            # If existing but needs re-embedding due to model or content change, remove prior chunk
+            if existing_chunk:
+                existing_data["chunks"] = [c for c in existing_data["chunks"] if c.get("id") != f"skill-{skill_folder_name}"]
+
+            # Embed name, description, and trigger queries per SPECIFICATION.md
+            triggers_str = " ".join(parsed.get("trigger_queries", []))
+            embed_text = f"{parsed['name']}. {parsed['description']}. Trigger Queries: {triggers_str}" if triggers_str else f"{parsed['name']}. {parsed['description']}"
 
             vector = ollama_service.generate_embedding(embed_text)
 
@@ -184,7 +188,13 @@ class SkillManager:
             })
         return matched
 
-    def execute_skill(self, skill_info: Dict[str, Any], user_query: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
+    def execute_skill(
+        self,
+        skill_info: Dict[str, Any],
+        user_query: str,
+        conversation_id: Optional[str] = None,
+        arguments: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Dispatch execution from skill to procedural tool.
         Logs interactions between 'skill', 'tool', and 'external API call'.
@@ -203,10 +213,13 @@ class SkillManager:
                     spec = importlib.util.spec_from_file_location("env_tools", str(script_path))
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
-                    # Extract city from query
-                    stop_words = {"what", "is", "the", "weather", "in", "time", "at", "for", "check", "tell", "me", "how", "right", "now", "currently", "today", "forecast", "like", "please", "conditions"}
-                    words = [w.strip("?,.!\"'") for w in user_query.split() if w.lower().strip("?,.!\"'") not in stop_words]
-                    city = " ".join(words).strip() or "Tokyo"
+                    # Extract city from structured arguments or fallback query
+                    if arguments and any(k in arguments for k in ["city", "city_name", "location"]):
+                        city = str(arguments.get("city") or arguments.get("city_name") or arguments.get("location")).strip()
+                    else:
+                        stop_words = {"what", "is", "the", "weather", "in", "time", "at", "for", "check", "tell", "me", "how", "right", "now", "currently", "today", "forecast", "like", "please", "conditions"}
+                        words = [w.strip("?,.!\"'") for w in user_query.split() if w.lower().strip("?,.!\"'") not in stop_words]
+                        city = " ".join(words).strip() or "Tokyo"
 
                     # Log invocation from skill to tool
                     audit_logger.log_call(
@@ -255,21 +268,26 @@ class SkillManager:
                     spec = importlib.util.spec_from_file_location("person_search", str(script_path))
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
-                    search_words = [w for w in user_query.split() if w.lower() not in ["who", "where", "is", "the", "find", "all", "what", "job", "title", "of", "person", "in", "lives"]]
-                    kw = " ".join(search_words).strip()
+                    if arguments and any(k in arguments for k in ["keyword", "name", "query", "field"]):
+                        kw = str(arguments.get("keyword") or arguments.get("name") or arguments.get("query") or "").strip()
+                        field = arguments.get("field")
+                    else:
+                        search_words = [w for w in user_query.split() if w.lower() not in ["who", "where", "is", "the", "find", "all", "what", "job", "title", "of", "person", "in", "lives"]]
+                        kw = " ".join(search_words).strip()
+                        field = None
 
                     audit_logger.log_call(
                         event_type="tool",
                         call_type="invocation",
                         invoker="skill",
                         recipient="tool",
-                        payload={"tool": "person_search.py", "function": "query_person_registry", "keyword": kw},
-                        description=f"Tool message passed to person_search.py for keyword: '{kw}'",
+                        payload={"tool": "person_search.py", "function": "query_person_registry", "keyword": kw, "field": field},
+                        description=f"Tool message passed to person_search.py for keyword: '{kw}' (field: {field})",
                         conversation_id=conversation_id
                     )
 
-                    matches = mod.query_person_registry(kw)
-                    result_data = {"matches": matches, "query_keyword": kw}
+                    matches = mod.query_person_registry(kw, field=field)
+                    result_data = {"matches": matches, "query_keyword": kw, "field": field}
                     if matches:
                         evidence_text = f"Found {len(matches)} personnel records: " + "; ".join([f"{p['name']} ({p.get('job_title', '')}, {p.get('city', '')}, {p.get('country', '')})" for p in matches[:5]])
                     else:
@@ -286,17 +304,25 @@ class SkillManager:
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
 
+                    stock_q = user_query
+                    if arguments and any(k in arguments for k in ["query", "mode"]):
+                        stock_q = str(arguments.get("query") or arguments.get("mode") or user_query)
+
                     audit_logger.log_call(
                         event_type="tool",
                         call_type="invocation",
                         invoker="skill",
                         recipient="tool",
-                        payload={"tool": "stock_search.py", "function": "analyze_stock_query", "query": user_query},
-                        description=f"Tool message passed to stock_search.py for: '{user_query}'",
+                        payload={"tool": "stock_search.py", "function": "analyze_stock_query", "query": stock_q},
+                        description=f"Tool message passed to stock_search.py for: '{stock_q}'",
                         conversation_id=conversation_id
                     )
 
-                    result_data = mod.analyze_stock_query(user_query)
+                    if arguments and "mode" in arguments and arguments.get("mode"):
+                        result_data = mod.get_stocks_by_performance(mode=str(arguments["mode"]), limit=arguments.get("limit", 5))
+                    else:
+                        result_data = mod.analyze_stock_query(stock_q)
+
                     stocks = result_data.get("stocks", [])
                     evidence_text = f"{result_data.get('category')}: " + ", ".join([f"{s['ticker']} ({s['change_pct']:+.2f}%, ${s['price']})" for s in stocks])
             except Exception as e:

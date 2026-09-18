@@ -230,7 +230,7 @@ async function sendChatMessage() {
   const skillsSelect = document.getElementById('chat-skills-select');
   const skillsMode = skillsSelect ? skillsSelect.value : 'vector_store';
   const skillThresholdInput = document.getElementById('chat-skill-threshold');
-  const skillThreshold = skillThresholdInput ? (parseFloat(skillThresholdInput.value) || 0.5) : 0.5;
+  const skillThreshold = skillThresholdInput ? (parseFloat(skillThresholdInput.value) || 0.2) : 0.2;
   const docThresholdInput = document.getElementById('doc-threshold');
   const docThreshold = docThresholdInput ? (parseFloat(docThresholdInput.value) || 0.3) : 0.3;
 

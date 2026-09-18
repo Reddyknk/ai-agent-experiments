@@ -55,3 +55,35 @@ def test_stock_search_tool():
     assert "Losers" in losers["category"] or "Decliners" in losers["category"]
     assert len(losers["stocks"]) > 0
     assert losers["stocks"][0]["change_pct"] < 0
+
+def test_parse_tool_call_json():
+    from services.agent_orchestrator import _parse_tool_call_json
+    raw_json = '''{
+      "tool": "person_search.query_person_registry",
+      "arguments": {
+        "keyword": "Lucas Dubois",
+        "field": "name"
+      }
+    }'''
+    res = _parse_tool_call_json(raw_json)
+    assert res["tool"] == "person_search.query_person_registry"
+    assert res["arguments"]["keyword"] == "Lucas Dubois"
+    assert res["arguments"]["field"] == "name"
+
+    # Markdown codeblock wrapping
+    codeblock_json = "```json\n" + raw_json + "\n```"
+    res_cb = _parse_tool_call_json(codeblock_json)
+    assert res_cb["tool"] == "person_search.query_person_registry"
+
+def test_person_registry_tool_with_arguments():
+    parsed_skill = {"folder_name": "person-information-skill", "name": "Person Information Skill", "score": 0.9}
+    res = skill_manager.execute_skill(
+        skill_info=parsed_skill,
+        user_query="Tell me about Lucas",
+        arguments={"keyword": "Lucas Dubois", "field": "name"}
+    )
+    assert res["result_data"]["query_keyword"] == "Lucas Dubois"
+    assert res["result_data"]["field"] == "name"
+    assert len(res["result_data"]["matches"]) >= 1
+    assert "Lucas Dubois" in res["evidence_text"]
+

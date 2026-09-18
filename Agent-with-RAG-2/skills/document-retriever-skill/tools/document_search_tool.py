@@ -12,7 +12,8 @@ def search_documents(
     query: str,
     top_k: int = 5,
     min_score: float = MIN_RAG_DOC_SCORE,
-    conversation_id: Optional[str] = None
+    conversation_id: Optional[str] = None,
+    invoker: str = "tool"
 ) -> List[Dict[str, Any]]:
     """
     Get the list of text chunks from the document vector database matching the query.
@@ -22,6 +23,7 @@ def search_documents(
         top_k: Maximum number of text chunks to retrieve (default: 5).
         min_score: Minimum cosine similarity score threshold (default: 0.3).
         conversation_id: Optional conversation ID for audit logging.
+        invoker: Component invoking the search (default: 'tool').
 
     Returns:
         List of matching document text chunks with content, scores, and metadata.
@@ -29,10 +31,10 @@ def search_documents(
     audit_logger.log_call(
         event_type="document search",
         call_type="invocation",
-        invoker="tool",
+        invoker=invoker,
         recipient="document search",
         payload={"query": query, "top_k": top_k, "min_score": min_score},
-        description=f"Document search tool invoked for query: '{query}'",
+        description=f"Document search invoked for query: '{query}' by {invoker}",
         conversation_id=conversation_id
     )
 
@@ -59,9 +61,9 @@ def search_documents(
         event_type="document search",
         call_type="response",
         invoker="document search",
-        recipient="tool",
+        recipient=invoker,
         payload={"count": len(formatted), "results": formatted},
-        description=f"Document search tool retrieved {len(formatted)} chunks",
+        description=f"Document search retrieved {len(formatted)} chunks",
         conversation_id=conversation_id
     )
 

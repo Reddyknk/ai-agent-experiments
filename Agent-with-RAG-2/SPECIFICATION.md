@@ -51,7 +51,7 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
       - In the next row, add a text box for the user to select the "Max Turns" the default is 3. Do not allow the user to set the number larger than 10.
       - To the right, add a dropbox to allow the user to select the maximum number of RAG chunks to send to the model. Default value is 5.
       - Next, add a dropbox called "Skills" to allow the user to select skills to use.
-        - First option in the dropbox should be "Vector Store" as the default option. The Agent will query the skills vector store to select the skills to use in the prompt to the model. Add a text box "Threshold" for the user to enter the threshold to use for the vector store query. The default value is 0.5.
+        - First option in the dropbox should be "Vector Store" as the default option. The Agent will query the skills vector store to select the skills to use in the prompt to the model. Add a text box "Threshold" for the user to enter the threshold to use for the vector store query. The default value is 0.2.
         - The second option should be "LLM Selected". The Agent will ask the LLM to select the skills to use in the prompt to the model.
         - The remainder of the selection should be the list of skills in skills/ folder. The Agent will use the skills selected in the prompt to the model.
       - At the bottom of the card, put a text box for the user to enter the chat message.
@@ -133,7 +133,17 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
 - The Agent should operate as follow:
   - When it receives the message from the user, query the Skills vector store to find the skills that have higher matching score than MIN_SKILL_SCORE.
   - If no skill is found, send the user query to the LLM using the simple system prompt as an assistant to answer the question.
-  - If there are skills found, send the user message and the skills to the LLM to get the instruction or plan for the tool execution.
+  - If there are skills found, send the user message and the 2 highest matching skills to the LLM to get the instruction or plan for the tool execution.
+    - The system prompt should ask the LLM to determine if any of the tools should be invoked to gather more information to answer the question.
+    - The system prompt should ask the LLM to respond with JSON format indicating the tool to be executed and the arguments to be passed to the tool.
+      For example:
+        {
+          "tool": "person_search.query_person_registry",
+          "arguments": {
+            "keyword": "Lucas Dubois",
+            "field": "name",
+          }
+        }
   - If the LLM determines that a procedural tool should be executed, execute the tool to obtain the needed information. Send a prompt to the LLM with the results from the tool. Repeat until the the final answer is received. Limit the number of loops no more than MAX_LLM_TURNS.
   - The last llm call should use typical system prompt as an assistant to answer the question. The final output of the agent is the response from this last llm call.
   - Only perform vector search for documents when the skill search result and the model direct the Agent to perform the search.
@@ -141,7 +151,7 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
 - Create a python code in services/ folder to use LlmAgent from Google ADK.
   - Use the model selected in the Chat & Knowledge Synthesis page.
   - Set the name to "Chat Agent with RAG".
-  - User the skills and tools available in skills/ folder.
+  - Use the skills and tools available in skills/ folder.
   - Create logs for all the invocations and responses when the Agent is invoked. Include all the details needed to show in the Audit Log & Event page. Creat logs when the Agent invoke and receive response from the model. Include the actual payload.
 - Create the following skills using the folder structure in the Directory Architecture. The skills should at least have the name, description, Trigger Queries, etc:
   - Get the time and weather of the city from the site that doesn't require API key
@@ -160,7 +170,7 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
     - agent - full log of the message sent to the agent and the response received from the agent.
     - skill search - full log of the message sent to the skill search and the response received from the skill search. Include the name of the vectorizer and response from the vectorizer.
     - document search - full log of the message sent to the document search and the response received from the document search.
-    - tool - full log of tool message passed to and received from the tool including the actual payload. If the tool makes external API call, log the full payload passed to the API and the full response received from the API.
+    - tool - full log of tool message passed to and received from the tools including the actual API payload or parameters in the function call. Do not redact or replace any part of the payload and response.
     - ollama vector - log the first 50 characters of the text chunk sent for embedding. Include the name of the vectorizer and response from the vectorizer. Do not include the vectors.
     - LLM - prompts sent to and response received from the model include the FULL payload. Do not log the API call for model acces. Only log the model invocation and response with the FULL PAYLOAD.
     - In the log, include the time of the call, the type of the call, the invoker, the recipient, and all the raw payload passed in the message.

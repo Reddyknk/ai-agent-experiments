@@ -14,14 +14,93 @@ from config import (
     DEFAULT_SKILL_THRESHOLD,
     DEFAULT_DOC_THRESHOLD,
     DEFAULT_MAX_TURNS,
-    MAX_TURNS_LIMIT
+    MAX_TURNS_LIMIT,
+    SKILLS_DIR
 )
+import json
+import re
+import importlib.util
+from pathlib import Path
 from services.skill_manager import skill_manager
 from services.vector_store import doc_vector_store
 from services.llm_service import llm_service
 from services.log_service import audit_logger
 from services.telemetry_service import telemetry_service
 from services.ollama_service import ollama_service
+
+def _load_doc_search_tool():
+    tool_path = Path(SKILLS_DIR) / "document-retriever-skill" / "tools" / "document_search_tool.py"
+    spec = importlib.util.spec_from_file_location("document_search_tool", str(tool_path))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.search_documents
+
+search_documents = _load_doc_search_tool()
+
+def _parse_tool_call_json(text: str) -> Dict[str, Any]:
+    """
+    Parse JSON tool execution directive per SPECIFICATION.md:
+    {
+      "tool": "person_search.query_person_registry",
+      "arguments": {
+        "keyword": "Lucas Dubois",
+        "field": "name"
+      }
+    }
+    Includes fallback heuristics for markdown codeblocks and text directives.
+    """
+    clean_text = (text or "").strip()
+    # 1. Search for fenced code blocks ```json ... ``` or ``` ... ```
+    cb_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", clean_text)
+    if cb_match:
+        try:
+            data = json.loads(cb_match.group(1).strip())
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+    # 2. Try direct json.loads
+    try:
+        data = json.loads(clean_text)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    # 3. Regex search for JSON object with "tool" key
+    match = re.search(r"\{\s*\"tool\"[\s\S]*?\}", clean_text)
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+    # 4. Regex search for any JSON object
+    for m in re.finditer(r"\{[^{}]*\}", clean_text):
+        try:
+            data = json.loads(m.group(0))
+            if isinstance(data, dict) and "tool" in data:
+                return data
+        except Exception:
+            pass
+
+    # Fallback heuristics for text/directive responses
+    lower = clean_text.lower()
+    if "no_tool_needed" in lower or "no tool needed" in lower or "no tool required" in lower:
+        return {"tool": "none", "arguments": {}}
+    if "execute_document_search" in lower or "document search" in lower:
+        return {"tool": "document_search_tool.search_documents", "arguments": {}}
+    if "execute_tool:" in clean_text:
+        parts = clean_text.split("EXECUTE_TOOL:", 1)
+        tool_name = parts[1].strip().split("\n")[0].strip()
+        return {"tool": tool_name, "arguments": {}}
+    if "execute_tool" in lower:
+        return {"tool": "execute_tool", "arguments": {}}
+
+    return {"tool": "none", "arguments": {}}
 
 class AgentOrchestrator:
     def process_chat(
@@ -167,9 +246,10 @@ class AgentOrchestrator:
         step_syn_elapsed = 0.0
         tool_plan_text = ""
         llm_result: Dict[str, Any] = {}
-        highest_skill = matched_skills[0] if matched_skills else None
+        top_skills = matched_skills[:2] if matched_skills else []
+        highest_skill = top_skills[0] if top_skills else None
 
-        if not highest_skill:
+        if not top_skills:
             # Per SPECIFICATION.md: "If no skill is found, send the user query to the LLM using the simple system prompt as an assistant to answer the question."
             step_syn_start = time.time()
             llm_result = llm_service.generate_response(
@@ -185,31 +265,72 @@ class AgentOrchestrator:
             agent_answer = llm_result.get("content", "")
 
         else:
-            # Step 4: Skill Found - Call LLM to get instruction or plan for tool execution
-            # Per SPECIFICATION.md: "If there are skills found, send the user message and the skills to the LLM to get the instruction or plan for the tool execution."
+            # Step 4: Skills Found - Send top 2 skills to LLM to get instruction or plan for tool execution
+            # Per SPECIFICATION.md:
+            # - The system prompt should ask the LLM to determine if any of the tools should be invoked to gather more information to answer the question.
+            # - The system prompt should ask the LLM to respond with JSON format indicating the tool to be executed and the arguments to be passed to the tool.
             step_plan_start = time.time()
-            skill_text = (
-                f"- Skill: {highest_skill['name']}\n"
-                f"  Folder: {highest_skill.get('folder_name')}\n"
-                f"  Description: {highest_skill['description']}\n"
-                f"  SOP / Instructions:\n{highest_skill.get('full_text', '')[:450]}"
-            )
+            skills_text_blocks = []
+            for i, s in enumerate(top_skills, 1):
+                folder = s.get("folder_name", "")
+                tool_func = ""
+                if "weather" in folder or "time" in folder:
+                    tool_func = "env_tools.get_weather_and_time(city: str)"
+                elif "person" in folder or "registry" in folder:
+                    tool_func = "person_search.query_person_registry(keyword: str, field: str = None)"
+                elif "stock" in folder:
+                    tool_func = "stock_search.analyze_stock_query(query: str)"
+                elif "document" in folder or "retriever" in folder:
+                    tool_func = "document_search_tool.search_documents(query: str, top_k: int)"
+
+                skills_text_blocks.append(
+                    f"- Skill #{i}: {s['name']} (Score: {s.get('score', 0.0)})\n"
+                    f"  Folder: {folder}\n"
+                    f"  Available Tool Function: {tool_func}\n"
+                    f"  Description: {s['description']}\n"
+                    f"  SOP / Instructions:\n{s.get('full_text', '')[:450]}"
+                )
+            skills_text = "\n\n".join(skills_text_blocks)
 
             plan_prompt = (
                 f"User Question: {query}\n\n"
-                f"Highest Matching Skill:\n{skill_text}\n\n"
-                f"Analyze the user question and provide a tool execution plan for the Agent. "
-                f"If the user question is general knowledge or cannot be answered by this skill, state 'DIRECTIVE: NO_TOOL_NEEDED'. "
-                f"If document retrieval from the document vector store is required and this skill is document-retriever-skill, explicitly state 'DIRECTIVE: EXECUTE_DOCUMENT_SEARCH' with the search query. "
-                f"If this procedural tool should be executed, state 'DIRECTIVE: EXECUTE_TOOL: {highest_skill['name']}'."
+                f"Top Matching Skills:\n{skills_text}\n\n"
+                f"Determine if any of the tools from the matching skills should be invoked to gather more information to answer the question.\n"
+                f"Respond with JSON format indicating the tool to be executed and the arguments to be passed to the tool.\n"
+                f"For example:\n"
+                f"{{\n"
+                f'  "tool": "person_search.query_person_registry",\n'
+                f'  "arguments": {{\n'
+                f'    "keyword": "Lucas Dubois",\n'
+                f'    "field": "name"\n'
+                f'  }}\n'
+                f"}}\n"
+                f"If document retrieval from the document vector store is required, use:\n"
+                f"{{\n"
+                f'  "tool": "document_search_tool.search_documents",\n'
+                f'  "arguments": {{\n'
+                f'    "query": "{query}",\n'
+                f'    "top_k": {max_rag_chunks}\n'
+                f'  }}\n'
+                f"}}\n"
+                f"If no tool should be invoked, respond with:\n"
+                f"{{\n"
+                f'  "tool": "none",\n'
+                f'  "arguments": {{}}\n'
+                f"}}"
+            )
+
+            plan_system_instruction = (
+                "You are an AI Agent Orchestrator. Determine if any of the tools should be invoked to gather more information to answer the question. "
+                "Respond with JSON format indicating the tool to be executed and the arguments to be passed to the tool."
             )
 
             plan_res = llm_service.generate_response(
                 prompt=plan_prompt,
-                system_instruction="You are an AI Agent Orchestrator. Formulate a precise tool execution plan based on the matching skill.",
+                system_instruction=plan_system_instruction,
                 model=model,
                 temperature=temperature,
-                max_tokens=1024,
+                max_tokens=2048,
                 custom_endpoint=custom_endpoint,
                 conversation_id=cid
             )
@@ -217,90 +338,100 @@ class AgentOrchestrator:
             step_plan_elapsed = round((time.time() - step_plan_start) * 1000, 2)
 
             # Execution loop limited to max_turns (no more than MAX_TURNS_LIMIT)
-            # Per SPECIFICATION.md: "If the LLM determines that a procedural tool should be executed, execute the tool to obtain the needed information. Send a prompt to the LLM with the results from the tool. Repeat until the final answer is received. Limit the number of loops no more than MAX_LLM_TURNS."
             turns_limit = min(max(1, int(max_turns)), MAX_TURNS_LIMIT)
             current_turn = 1
-            has_doc_skill = ("retriever" in highest_skill.get("folder_name", "").lower() or "document" in highest_skill.get("folder_name", "").lower())
-            latest_plan = tool_plan_text
-
+            has_doc_skill = any(
+                ("retriever" in s.get("folder_name", "").lower() or "document" in s.get("folder_name", "").lower())
+                for s in top_skills
+            )
+            latest_plan_text = tool_plan_text
             agent_answer = ""
+            executed_skills = set()
+            executed_tools = set()
 
             while current_turn <= turns_limit:
-                plan_lower = latest_plan.lower()
-                no_tool_needed = (
-                    "no_tool_needed" in plan_lower or
-                    "no tool needed" in plan_lower or
-                    "no tool is relevant" in plan_lower or
-                    "no tool required" in plan_lower
-                )
+                plan_data = _parse_tool_call_json(latest_plan_text)
+                tool_to_execute = (plan_data.get("tool") or "").strip()
+                tool_args = plan_data.get("arguments") or {}
+                tool_executed_this_turn = False
 
-                # 1. Document Search if directed
-                if has_doc_skill and any(term in plan_lower for term in ["execute_document_search", "document search", "search document", "retrieve document"]):
+                # Check if tool is none
+                if not tool_to_execute or tool_to_execute.lower() in ["none", "null", "false", "no_tool_needed"]:
+                    pass
+                elif has_doc_skill and any(term in tool_to_execute.lower() for term in ["document", "retriever", "search_documents"]):
+                    # 1. Document Search if directed
                     step_rag_start = time.time()
-                    audit_logger.log_call(
-                        event_type="document search",
-                        call_type="invocation",
-                        invoker="agent",
-                        recipient="document search",
-                        payload={"query": query, "top_k": max_rag_chunks, "min_score": doc_threshold},
-                        description=f"Message sent to document search for: '{query}' (directed by model plan, threshold: {doc_threshold})",
-                        conversation_id=cid
-                    )
-                    doc_chunks = doc_vector_store.query_similar(query, top_k=max_rag_chunks, min_score=doc_threshold, conversation_id=cid, invoker="document search")
-                    audit_logger.log_call(
-                        event_type="document search",
-                        call_type="response",
-                        invoker="document search",
-                        recipient="agent",
-                        payload={
-                            "retrieved_chunks": [
-                                {
-                                    "doc_name": c.get("metadata", {}).get("document_name"),
-                                    "chunk_index": c.get("metadata", {}).get("chunk_index"),
-                                    "score": c.get("score"),
-                                    "text": c.get("text")
-                                }
-                                for c in doc_chunks
-                            ],
-                            "count": len(doc_chunks)
-                        },
-                        description=f"Response received from document search: {len(doc_chunks)} chunks retrieved",
-                        conversation_id=cid
+                    doc_query = tool_args.get("query") or query
+                    doc_top_k = int(tool_args.get("top_k") or max_rag_chunks)
+                    doc_chunks = search_documents(
+                        query=doc_query,
+                        top_k=doc_top_k,
+                        min_score=doc_threshold,
+                        conversation_id=cid,
+                        invoker="agent"
                     )
                     for chunk in doc_chunks:
-                        meta = chunk.get("metadata", {})
-                        doc_name = meta.get("document_name", "Document")
+                        doc_name = chunk.get("document_name", "Document")
+                        chunk_idx = chunk.get("chunk_index", 0)
                         evidence_item = {
                             "step": "Document Search",
-                            "title": f"Doc: {doc_name} (Chunk #{meta.get('chunk_index', 0)}, Score: {chunk['score']})",
+                            "title": f"Doc: {doc_name} (Chunk #{chunk_idx}, Score: {chunk['score']})",
                             "score": chunk["score"],
                             "content": chunk["text"],
-                            "details": meta
+                            "details": chunk
                         }
                         retrieved_evidence.append(evidence_item)
                         doc_context_snippets.append(f"[From {doc_name}]:\n{chunk['text']}")
                     step_rag_elapsed += round((time.time() - step_rag_start) * 1000, 2)
+                    tool_executed_this_turn = True
+                    executed_tools.add(tool_to_execute)
 
-                # 2. Procedural Tool if directed
-                elif not has_doc_skill and not no_tool_needed:
-                    folder_name = highest_skill.get("folder_name", "")
-                    skill_kw = folder_name.replace("-skill", "").split("-")
-                    is_relevant = any(kw in plan_lower for kw in skill_kw) or "execute_tool" in plan_lower or not latest_plan
-                    if is_relevant:
-                        step_tool_start = time.time()
-                        exec_result = skill_manager.execute_skill(highest_skill, query, conversation_id=cid)
-                        evidence_item = {
-                            "step": "Skill Search",
-                            "title": f"Skill: {highest_skill['name']} (Score: {highest_skill['score']})",
-                            "score": highest_skill["score"],
-                            "content": exec_result.get("evidence_text", ""),
-                            "details": exec_result.get("result_data", {})
-                        }
-                        retrieved_evidence.append(evidence_item)
-                        skill_context_snippets.append(f"[{highest_skill['name']} Execution Output]: {exec_result.get('evidence_text', '')}")
-                        step_tool_elapsed += round((time.time() - step_tool_start) * 1000, 2)
+                else:
+                    # 2. Procedural Tools from matching skills
+                    for s in top_skills:
+                        folder_name = s.get("folder_name", "")
+                        skill_name = s.get("name", "")
+                        if "retriever" in folder_name.lower() or "document" in folder_name.lower():
+                            continue
+                        if folder_name in executed_skills:
+                            continue
+                        skill_kw = folder_name.replace("-skill", "").split("-")
+                        is_match = (
+                            tool_to_execute.lower() in folder_name.lower() or
+                            folder_name.lower() in tool_to_execute.lower() or
+                            tool_to_execute.lower() in skill_name.lower() or
+                            skill_name.lower() in tool_to_execute.lower() or
+                            any(kw in tool_to_execute.lower() for kw in skill_kw) or
+                            ("env_tools" in tool_to_execute.lower() and "weather" in folder_name.lower()) or
+                            ("person_search" in tool_to_execute.lower() and "person" in folder_name.lower()) or
+                            ("stock_search" in tool_to_execute.lower() and "stock" in folder_name.lower()) or
+                            tool_to_execute.lower() in ["execute_tool", "true"] or
+                            not latest_plan_text
+                        )
+                        if is_match:
+                            executed_skills.add(folder_name)
+                            executed_tools.add(tool_to_execute)
+                            step_tool_start = time.time()
+                            exec_result = skill_manager.execute_skill(
+                                s,
+                                query,
+                                conversation_id=cid,
+                                arguments=tool_args
+                            )
+                            evidence_item = {
+                                "step": "Skill Search",
+                                "title": f"Skill: {s['name']} (Score: {s.get('score', 0.0)})",
+                                "score": s.get("score", 0.0),
+                                "content": exec_result.get("evidence_text", ""),
+                                "details": exec_result.get("result_data", {})
+                            }
+                            retrieved_evidence.append(evidence_item)
+                            skill_context_snippets.append(f"[{s['name']} Execution Output]: {exec_result.get('evidence_text', '')}")
+                            step_tool_elapsed += round((time.time() - step_tool_start) * 1000, 2)
+                            tool_executed_this_turn = True
+                            break
 
-                # Send prompt to LLM with cumulative results from tools
+                # Build cumulative context from tool execution outputs
                 context_block = ""
                 if tool_plan_text:
                     context_block += f"--- Orchestrator Tool Plan ---\n{tool_plan_text.strip()}\n\n"
@@ -309,7 +440,37 @@ class AgentOrchestrator:
                 if doc_context_snippets:
                     context_block += "--- Document Vector DB Chunks ---\n" + "\n\n".join(doc_context_snippets) + "\n"
 
-                # Per SPECIFICATION.md: "The last llm call should use typical system prompt as an assistant to answer the question. The final output of the agent is the response from this last llm call."
+                # If a tool was executed and we have turns left, check if the LLM needs another tool
+                if tool_executed_this_turn and current_turn < turns_limit:
+                    next_check_prompt = (
+                        f"User Question: {query}\n\n"
+                        f"Top Matching Skills:\n{skills_text}\n\n"
+                        f"Results from tool execution so far:\n"
+                        f"{context_block.strip()}\n\n"
+                        f"Determine if any additional tool should be invoked to gather more information to answer the question. "
+                        f"Respond with JSON format indicating the tool and arguments.\n"
+                        f"If sufficient information has been gathered to formulate the final answer, respond with:\n"
+                        f'{{"tool": "none", "arguments": {{}}}}'
+                    )
+                    next_res = llm_service.generate_response(
+                        prompt=next_check_prompt,
+                        system_instruction=plan_system_instruction,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=512,
+                        custom_endpoint=custom_endpoint,
+                        conversation_id=cid
+                    )
+                    next_plan_data = _parse_tool_call_json(next_res.get("content", ""))
+                    next_tool = (next_plan_data.get("tool") or "").strip()
+                    if next_tool and next_tool.lower() not in ["none", "null", "false", "no_tool_needed"] and next_tool not in executed_tools:
+                        latest_plan_text = next_res.get("content", "")
+                        current_turn += 1
+                        continue
+
+                # Per SPECIFICATION.md:
+                # "The last llm call should use typical system prompt as an assistant to answer the question.
+                # The final output of the agent is the response from this last llm call."
                 system_instruction = "You are a helpful assistant. Answer the user's question accurately based on the provided context."
 
                 if context_block.strip():
@@ -335,58 +496,63 @@ class AgentOrchestrator:
                 )
                 step_syn_elapsed += round((time.time() - step_syn_start) * 1000, 2)
                 agent_answer = llm_result.get("content", "")
-
-                # If final grounded response received without requiring further tool loop, exit loop
-                if agent_answer:
-                    break
-
-                current_turn += 1
+                break
 
         latency = (time.time() - start_time) * 1000
 
-        # Record telemetry & log final agent response
-        telemetry_service.record_event(
-            event_type="response",
-            model=model,
-            input_tokens=llm_result.get("input_tokens", 0),
-            output_tokens=llm_result.get("output_tokens", 0),
-            latency_ms=latency
-        )
-
+        # Step 5: Log final Agent response
         audit_logger.log_call(
             event_type="agent",
             call_type="response",
             invoker="agent",
             recipient="user",
-            payload={"response": agent_answer, "content": agent_answer, "evidence_count": len(retrieved_evidence)},
-            description="Full response received from the agent",
+            payload={
+                "response": agent_answer,
+                "model": model,
+                "evidence_count": len(retrieved_evidence),
+                "top_skills": [s.get("name") for s in top_skills]
+            },
+            description=f"Full response received from the agent ({len(retrieved_evidence)} evidence items, {len(top_skills)} skill(s) evaluated)",
             conversation_id=cid,
             latency_ms=latency
         )
 
-        # Retrieve all events for this conversation and assemble bubbles showing components that generated logs
+        # Step 6: Telemetry Recording
+        total_in_tokens = llm_result.get("input_tokens", 0)
+        total_out_tokens = llm_result.get("output_tokens", 0)
+        telemetry_service.record_event(
+            event_type="response",
+            model=model,
+            input_tokens=total_in_tokens,
+            output_tokens=total_out_tokens,
+            latency_ms=latency
+        )
+
+        # Step 7: Assemble Event Grouping / Collapsible Steps
         all_conv_events = audit_logger.get_conversation_logs(cid)
+        steps = []
 
         # 1. Skills Component
         skill_logs = [e for e in all_conv_events if e.get("event_type") in ["skill search", "ollama vector"] and (not tool_plan_text or e.get("timestamp") <= all_conv_events[min(len(all_conv_events)-1, 3)].get("timestamp"))]
+        top_skills_str = ", ".join([f"{s['name']} ({s.get('score', 0.0)})" for s in top_skills])
         steps.append({
             "component": "Skills",
             "icon": "⚡",
             "step_name": "Skills",
             "elapsed_ms": step_skill_elapsed,
-            "summary": f"Scanned skill database ({vectorizer_name}). Highest match: {highest_skill['name']} ({highest_skill['score']})" if highest_skill else "No skills matched above threshold.",
+            "summary": f"Scanned skill database ({vectorizer_name}). Top matches: {top_skills_str}" if top_skills else "No skills matched above threshold.",
             "logs": [e for e in all_conv_events if e.get("event_type") == "skill search"]
         })
 
-        # 2. Agent Component (tool planning by orchestrator using highest scoring skill)
-        if highest_skill:
+        # 2. Agent Component (tool planning by orchestrator using top scoring skills)
+        if top_skills:
             steps.append({
                 "component": "Agent",
                 "icon": "🤖",
                 "step_name": "Agent",
                 "elapsed_ms": step_plan_elapsed,
-                "summary": f"Agent evaluated highest-scoring skill '{highest_skill['name']}' and planned tool directives with {model}.",
-                "logs": [e for e in all_conv_events if e.get("event_type") == "LLM" and "Highest Matching Skill" in str(e.get("payload", ""))]
+                "summary": f"Agent evaluated top {len(top_skills)} skill(s) ({', '.join(s['name'] for s in top_skills)}) and planned tool directives with {model}.",
+                "logs": [e for e in all_conv_events if e.get("event_type") == "LLM" and ("Top Matching Skills" in str(e.get("payload", "")) or "Highest Matching Skill" in str(e.get("payload", "")))]
             })
 
         # 3. RAG Component (if document search was performed)
@@ -404,12 +570,13 @@ class AgentOrchestrator:
         # 4. Tools Component (if procedural tool was executed)
         if step_tool_elapsed > 0:
             tool_logs = [e for e in all_conv_events if e.get("event_type") in ["tool", "external API call"]]
+            executed_names = ", ".join([s["name"] for s in top_skills if s.get("folder_name") in executed_skills]) or (top_skills[0]["name"] if top_skills else "Tool")
             steps.append({
                 "component": "Tools",
                 "icon": "🛠️",
                 "step_name": "Tools",
                 "elapsed_ms": step_tool_elapsed,
-                "summary": f"Executed procedural tool for '{highest_skill['name']}'.",
+                "summary": f"Executed procedural tool for '{executed_names}'.",
                 "logs": tool_logs
             })
 

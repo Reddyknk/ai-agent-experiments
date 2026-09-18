@@ -194,7 +194,12 @@ class LLMService:
                     candidates = data.get("candidates", [])
                     output_text = ""
                     if candidates:
-                        output_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        non_thought_parts = [p.get("text", "") for p in parts if not p.get("thought")]
+                        if non_thought_parts:
+                            output_text = "".join(non_thought_parts).strip()
+                        elif parts:
+                            output_text = "".join([p.get("text", "") for p in parts]).strip()
                     output_tokens = len(output_text.split())
 
                     # Log LLM response received from model with FULL payload
@@ -276,12 +281,54 @@ class LLMService:
             return "NONE"
 
         # Case 2: Tool Execution Plan / Orchestrator Directive
-        if "tool execution plan" in sys_lower or "tool execution plan" in prompt_lower or "highest matching skill:" in prompt_lower:
+        if (
+            "tool execution plan" in sys_lower or
+            "tool execution plan" in prompt_lower or
+            "highest matching skill:" in prompt_lower or
+            "top matching skills:" in prompt_lower or
+            "ai agent orchestrator" in sys_lower or
+            "respond with json format" in sys_lower or
+            "respond with json format" in prompt_lower
+        ):
+            # Check if JSON format is expected (per SPECIFICATION.md)
+            if "json" in sys_lower or "json" in prompt_lower:
+                user_q = ""
+                if "user question:" in prompt_lower:
+                    user_q = prompt_lower.split("user question:", 1)[1].split("\n", 1)[0].strip()
+                target_text = user_q or prompt_lower
+
+                if any(w in target_text for w in ["weather", "time", "tokyo", "london", "paris", "temperature"]):
+                    city = "London" if "london" in target_text else "Tokyo"
+                    return json.dumps({
+                        "tool": "env_tools.get_weather_and_time",
+                        "arguments": {"city": city}
+                    }, indent=2)
+                elif any(w in target_text for w in ["person", "employee", "registry", "lucas", "who is", "kenji", "job title"]):
+                    return json.dumps({
+                        "tool": "person_search.query_person_registry",
+                        "arguments": {"keyword": "Lucas Dubois", "field": "name"}
+                    }, indent=2)
+                elif any(w in target_text for w in ["stock", "market", "gainer", "loser", "decline"]):
+                    return json.dumps({
+                        "tool": "stock_search.analyze_stock_query",
+                        "arguments": {"query": "gainers"}
+                    }, indent=2)
+                elif "document-retriever-skill" in prompt_lower or any(w in target_text for w in ["document", "strategy", "report", "financial"]):
+                    return json.dumps({
+                        "tool": "document_search_tool.search_documents",
+                        "arguments": {"query": user_q or "marketing strategy", "top_k": 5}
+                    }, indent=2)
+                else:
+                    return json.dumps({
+                        "tool": "none",
+                        "arguments": {}
+                    }, indent=2)
+
             if "document-retriever-skill" in prompt_lower or "retriever" in prompt_lower:
                 return "DIRECTIVE: EXECUTE_DOCUMENT_SEARCH"
             for line in prompt.split("\n"):
-                if "- skill:" in line.lower():
-                    skill_name = line.split(":", 1)[1].strip()
+                if "- skill:" in line.lower() or "- skill #" in line.lower() or "skill #" in line.lower():
+                    skill_name = line.split(":", 1)[1].strip().split("(")[0].strip()
                     return f"DIRECTIVE: EXECUTE_TOOL: {skill_name}"
             return "DIRECTIVE: EXECUTE_TOOL"
 

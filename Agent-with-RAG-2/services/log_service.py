@@ -75,6 +75,29 @@ class LogService:
         - Each invocation/response is a separate entry in the log.
         """
         now_utc = datetime.now(timezone.utc)
+        # Per SPECIFICATION.md and user instruction:
+        # "tool - full log of tool message passed to and received from the tool
+        # including the actual payload. If the tool makes external API call, log the full payload
+        # passed to the API and the full response received from the API. Do not redact or replace any part of the payload and response."
+        # "do not redact or replace any part of the payload in the tools API or function call"
+        lower_event = (event_type or "").lower()
+        lower_invoker = (invoker or "").lower()
+        lower_recipient = (recipient or "").lower()
+        lower_call_type = (call_type or "").lower()
+
+        is_tool_or_function_call = (
+            any(
+                kw in field
+                for kw in ["tool", "function", "external api", "tools api"]
+                for field in [lower_event, lower_invoker, lower_recipient, lower_call_type]
+            ) or
+            event_type in ["tool", "external API call", "function call", "tools API", "tool API", "function"] or
+            invoker in ["tool", "external API call", "function call", "tools API", "tool API", "function"] or
+            recipient in ["tool", "external API call", "function call", "tools API", "tool API", "function"] or
+            call_type in ["function call", "tool call", "tools API"]
+        )
+        logged_payload = payload if is_tool_or_function_call else redact_sensitive_data(payload)
+
         entry = {
             "id": f"log-{int(now_utc.timestamp() * 1000)}-{os.urandom(3).hex()}",
             "timestamp": datetime.now().isoformat(),
@@ -84,7 +107,7 @@ class LogService:
             "target": recipient,
             "recipient": recipient,
             "description": description or f"{call_type.capitalize()}: {invoker} -> {recipient}",
-            "payload": redact_sensitive_data(payload),
+            "payload": logged_payload,
             "conversation_id": conversation_id or "system",
             "latency_ms": round(latency_ms, 2),
             "status": status

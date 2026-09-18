@@ -25,6 +25,69 @@ def test_api_key_redaction():
     assert "AIzaSyD" not in redacted["query"]
     assert "****" in redacted["query"]
 
+def test_tool_payload_not_redacted():
+    tool_payload = {
+        "tool": "env_tools.py",
+        "api_key": "raw_unredacted_key_or_param",
+        "authorization": "Bearer token123",
+        "city": "Tokyo"
+    }
+    logged = audit_logger.log_call(
+        event_type="tool",
+        invoker="skill",
+        recipient="tool",
+        call_type="invocation",
+        payload=tool_payload
+    )
+    assert logged["payload"]["api_key"] == "raw_unredacted_key_or_param"
+    assert logged["payload"]["authorization"] == "Bearer token123"
+
+    api_payload = {
+        "status": "success",
+        "api_secret": "raw_secret_data",
+        "temperature": 23.5
+    }
+    logged_api = audit_logger.log_call(
+        event_type="external API call",
+        invoker="external API call",
+        recipient="tool",
+        call_type="response",
+        payload=api_payload
+    )
+    assert logged_api["payload"]["api_secret"] == "raw_secret_data"
+
+    # Function call payload
+    fn_payload = {
+        "function": "calculate_metrics",
+        "api_key": "raw_api_key_12345",
+        "token": "raw_token_xyz"
+    }
+    logged_fn = audit_logger.log_call(
+        event_type="function call",
+        invoker="agent",
+        recipient="function",
+        call_type="function call",
+        payload=fn_payload
+    )
+    assert logged_fn["payload"]["api_key"] == "raw_api_key_12345"
+    assert logged_fn["payload"]["token"] == "raw_token_xyz"
+
+    # Tools API payload
+    tools_api_payload = {
+        "endpoint": "https://api.example.com/v1/tools",
+        "secret_key": "super_secret_raw_key",
+        "parameters": {"count": 10}
+    }
+    logged_tools_api = audit_logger.log_call(
+        event_type="tools API",
+        invoker="tool",
+        recipient="tools API",
+        call_type="invocation",
+        payload=tools_api_payload
+    )
+    assert logged_tools_api["payload"]["secret_key"] == "super_secret_raw_key"
+
+
 def test_health_endpoint(client):
     res = client.get("/api/health")
     assert res.status_code == 200
