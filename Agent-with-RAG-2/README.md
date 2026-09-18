@@ -106,21 +106,32 @@ Press `CTRL+C` in the terminal running `app.py`. The registered exit handlers wi
 
 ### 1. Chat & Knowledge Synthesis
 - **Model Selection**: Defaults to `gemma-4-26b-a4b-it`. On startup, the application fetches active text-generation models directly from the Google AI Studio API and populates the dropdown menu (e.g., `gemma-4-26b-a4b-it`, `gemini-2.5-flash`, `gemini-2.5-pro`, etc.), or choose **Custom Model** to enter your own endpoint URL (e.g., `http://127.0.0.1:8000/v1/chat/completions`).
-- **Inference Parameters**:
-  - Adjust **Temperature** (0.0 to 2.0).
-  - Adjust **Max Tokens** (enforced below model maximum limit).
-  - Adjust **Max RAG Chunks** (1 to 10) to control evidence density.
+- **Inference & Orchestration Parameters**:
+  - **Temperature**: Adjust generation creativity (0.0 to 2.0).
+  - **Max Tokens**: Enforced below model maximum limit.
+  - **Max RAG Chunks**: Select maximum number of context chunks to retrieve (1 to 10).
+  - **Max Turns**: Multi-turn tool execution loop limit (default: 3, clamped between 1 and 10).
+  - **Skills Selection Dropdown**:
+    - **Vector Store (Default)**: Automatically queries the skill vector database for skills exceeding the **Threshold** (default: 0.5).
+    - **LLM Selected**: Prompts the LLM to inspect all available skills in `skills/` and select the most appropriate skill folder.
+    - **Individual Skill**: Explicitly select any skill folder found in `skills/` (e.g., `time-weather-skill`, `person-information-skill`, `stock-market-skill`, `document-retriever-skill`).
+  - **Doc Threshold**: Set minimum similarity threshold (default: 0.3) for document chunk retrieval in the *Retrieved Context Evidence* card.
+- **Multi-Turn Cognitive Loop**:
+  - If no skill matches, answers directly using a simple AI assistant prompt.
+  - If a skill matches, prompts the LLM for a structured execution plan or directive.
+  - If directed, runs procedural tools or searches the document vector store (only when `document-retriever-skill` is matched/selected).
+  - Feeds results back into the model in a feedback loop up to **Max Turns** until the final answer is synthesized.
 - **Interacting with Skills & RAG**:
   - *Weather query*: "What is the weather and local time in Tokyo?"
   - *Registry query*: "Who is the Principal AI Engineer and where are they located?"
   - *Stock market query*: "What are the top gaining stocks in the market today?"
   - *Document RAG query*: "What was our total revenue and net income in FY2025 financial report?"
-- **Response Box with "Show Logs" Button & Component Bubbles**:
-  - Each response includes a box containing bubbles displaying the name of the components that generated the logs (`Skills`, `Agent`, `RAG`, `Tools`, `LLM`), appropriate icons (`⚡`, `🤖`, `📚`, `🛠️`, `🧠`), and the elapsed time of each step.
-  - A toggle button named **"Show Logs"** toggles between expand and collapse.
-  - Clicking **"Show Logs"** expands the collapsible box to reveal the full content of every step including its summary and detailed log records with full JSON payloads, equipped with scroll areas if the content is long.
+- **Response Detail Box with "Show Logs" Button & Component Bubbles**:
+  - Each response includes an anchored detail box containing bubbles displaying the name of the components that generated logs (`Skills`, `Agent`, `RAG`, `Tools`, `LLM`), appropriate icons (`⚡`, `🤖`, `📚`, `🛠️`, `🧠`), and the elapsed time of each step in milliseconds.
+  - A toggle button named **"Show Logs"** strictly anchored at the top-right corner toggles between expand and collapse.
+  - Clicking **"Show Logs"** expands the collapsible detail box to reveal the full content of every step including its summary and detailed log records with full JSON payloads, equipped with scroll areas if the content is long.
 - **Retrieved Context Evidence**:
-  - Inspect the right-hand card to review retrieved evidence grouped by step (**Skill Search** and **Document Search**) with similarity confidence scores and raw snippets.
+  - Inspect the right-hand card to review retrieved evidence grouped by step (**Skill Search** and **Document Search**) with similarity confidence scores and raw snippets. Filtered by the configured **Doc Threshold**.
 
 ### 2. Vector DB Ingestion
 - **Ingesting Local Docs**: Enter `sample_docs` in the target input and select "Local Directory / File", then click **Populate Vector Database**.
@@ -209,4 +220,4 @@ Run the full pytest suite to verify all modules:
 ```bash
 python3 -m pytest tests/ -v
 ```
-All 16 unit and API integration tests will run and validate vector similarity, chunk deduplication, skill execution, key redaction, and API endpoints.
+All 19 unit and API integration tests will run and validate vector similarity, chunk deduplication, skill execution, key redaction, multi-turn tool loops, and API endpoints.

@@ -179,7 +179,8 @@ def test_component_logging(client):
         "/api/chat",
         json={
             "query": "Explain the architecture of Agent and RAG technology from our documents",
-            "model": config.DEFAULT_LLM_MODEL
+            "model": config.DEFAULT_LLM_MODEL,
+            "skill_threshold": 0.3
         }
     )
     assert res_doc.status_code == 200
@@ -189,3 +190,35 @@ def test_component_logging(client):
     doc_event_types = {e.get("event_type") for e in doc_events}
     # Verify document search WAS called when document-retriever-skill matched
     assert "document search" in doc_event_types
+
+def test_skills_list_endpoint(client):
+    res = client.get("/api/skills/list")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    assert "skills" in data
+    assert len(data["skills"]) >= 4
+    folder_names = [s["folder_name"] for s in data["skills"]]
+    assert "time-weather-skill" in folder_names
+    assert "person-information-skill" in folder_names
+    assert "stock-market-skill" in folder_names
+    assert "document-retriever-skill" in folder_names
+
+def test_chat_with_custom_parameters(client):
+    # Test chat with explicit specific skill mode
+    res = client.post(
+        "/api/chat",
+        json={
+            "query": "What is the weather in Tokyo?",
+            "model": config.DEFAULT_LLM_MODEL,
+            "skills_mode": "time-weather-skill",
+            "skill_threshold": 0.4,
+            "doc_threshold": 0.3,
+            "max_turns": 3
+        }
+    )
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    assert "answer" in data["data"]
+    assert "steps" in data["data"]

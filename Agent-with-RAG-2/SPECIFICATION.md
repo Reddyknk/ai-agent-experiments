@@ -44,14 +44,20 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
       - To the left of the model choice dropdown, add a box to allow the user to select the “Temperature” parameter to send to the model.
       - To the left of the temperature box, add a text box to allow the user to set the “Max Tokens” parameter to send to the model. Do not allow the user to set the number larger than the max tokens of the model selected.
     - Below the page title, there should be two cards. The card on the left is the “Chat with the Agent”. Allow the user to type text to chat with the Agent.
-      - Add the drop box to allow the user to select the maximum number of RAG chunks to send to the model.
+      - Add the dropbox to allow the user to select the maximum number of RAG chunks to send to the model.
+      - Add a text box for the user to select the "Max Turns" the default is 3. Do not allow the user to set the number larger than 10.
+      - Add a dropbox called "Skills" to allow the user to select skills to use.
+        - First option in the dropbox should be "Vector Store" as the default option. The Agent will query the skills vector store to select the skills to use in the prompt to the model. Add a text box "Threshold" for the user to enter the threshold to use for the vector store query. The default value is 0.5.
+        - The second option should be "LLM Selected". The Agent will ask the LLM to select the skills to use in the prompt to the model.
+        - The remainder of the selection should be the list of skills in skills/ folder. The Agent will use the skills selected in the prompt to the model.
       - Use a new conversation ID for each question 
       - Once the response is completed, display the response.
         - Add the detail box in the response with a button named “Show Logs”. Within the detail box, add bubbles showing the name of the components that generated the logs (such as Agent, Tools, RAG, Skills), icons appropriate for the components, and the elapse time of each step.
         - When the user clicks on the "Show Logs" button, the detail box should expand to show the full content of the step including the logs. Use scroll area in the bubble if the content is too long.
         - Make the "Show Logs" button toggle between expand and collapse.
         - Anchor "Show Logs" button at the top-right coner of the detail box.
-    - The second card to the right displays “Retrieved Context Evidence” to display the contents of the information retrieved from the vector store. Group the info by the steps the information was retrieved. Ie: Skill Search, Document Search, etc
+    - The second card to the right displays “Retrieved Context Evidence” to display the contents of the information retrieved from the vector store.
+      - Add a box "Doc Threshold" for the user to set the threshold for the document retrieval. The default value is 0.3.
     - The width of both cards should be equal and they should fill the width of the page. The width should be approximately half of the screen width.
   - The second page “Vector DB Ingestion” allows the user to populate the Vector Database.
     - At the same level as the page title at the right side of the page, put the statistics of the ingestion. Display the number of chunks, documents ingested, and the size of the DB in MByte.
@@ -110,21 +116,26 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
 - Use local ollama to vectorize the text.
 - Upon start up, the app should check whether ollama is currently running and start the service if it is not already started.
 - When the app terminates, shutdown the ollama service if the app started the service. If it is already running when the app starts, do not shutdown ollama.
-- Upon start up, the app should scan the skills/ folder and load the skills that are not currently in the skills vector database.
-  - The skills should have a separate skill vector database should be built as follow:
+- On start up, get the list of ONLY active LLM models for text generation from Google AI Studio API that can be used by the Agent. Use the list in the dropdown menu in the Chat page.
+- The skills should have a separate skill vector database and be built as follow:
   - The contents from name and description fields should be sent to the Embedder/Vectorizer.
   - The vectors and the complete text of the SKILL.md file should be stored in the database as one record.
-  - When the skill vector database is queried, the list of skills that have scores higher than MIN_SKILL_SCORE should be returned. The min score should be defined in config.py with the initial value of 0.5.
-- On start up, get the list of ONLY active LLM models for text generation from Google AI Studio API that can be used by the agent. Use the list in the dropdown menu in the Chat page.
+  - Upon start up, the app should scan the skills/ folder and load the skills that are not currently in the skills vector database.
+  - When the skill vector database is queried, the list of skills that have scores higher than minimum threshold from the UI should be returned.
 - Set DEFAULT_LLM_MODEL=gemma-4-26b-a4b-it in config.py as the default LLM model to use. Use this constant as the default everywhere the model is used.
+- The Agent should operate as follow:
+  - When it receives the message from the user, query the Skills vector store to find the skills that have higher matching score than MIN_SKILL_SCORE.
+  - If no skill is found, send the user query to the LLM using the simple system prompt as an assistant to answer the question.
+  - If there are skills found, send the user message and the skills to the LLM to get the instruction or plan for the tool execution.
+  - If the LLM determines that a procedural tool should be executed, execute the tool to obtain the needed information. Send a prompt to the LLM with the results from the tool. Repeat until the the final answer is received. Limit the number of loops no more than MAX_LLM_TURNS.
+  - Only perform vector search for documents when the skill search result and the model direct the Agent to perform the search.
+
 - Create the following skills using the folder structure in the Directory Architecture. The skills should at least have the name, description, Trigger Queries, etc:
   - Get the time and weather of the city from the site that doesn't require API key
   - Get the list of stocks with the highest percentage increase or lowest percentage decrease based on the chat question
   - Get the list of text chunks from the document vector database. The score must  be higher than MIN_RAG_DOC_SCORE defined in config.py with the initial score of 0.3.
   - Get the name, city, country, or job title of the person in the CSV file.
     - Create 20 random samples of the CSV file with name, city, country, or job title for the tool to query
-- If a skill matches with a score higher than MIN_SKILL_SCORE, make the call to the LLM with the skill with the highest score to get the instruction or plan for the tool execution.
-- Only perform vector search for documents when the skill search result and the model direct the Agent to perform the search.
 
 - Create 3 sample documents in the folder called sample_docs/.
   - One document should be about Agent and RAG technology,
@@ -141,6 +152,7 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
     - In the log, include the time of the call, the type of the call, the invoker, the recipient, and all the raw payload passed in the message.
     - Do not combine the logs of from the request and response into the same log entry when displaying on the screen. Each invocation/response should be a separate entry in the log.
   - Redact API keys with “****” if any is present.
+
 - Create a README.md with a brief description about:
   - what this system does
   - how to install the components needed

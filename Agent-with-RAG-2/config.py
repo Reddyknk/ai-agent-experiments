@@ -26,9 +26,13 @@ SKILL_VECTOR_DB_FILE = DATABASE_DIR / "skill_vectors.json"
 LOG_FILE = DATABASE_DIR / "log.json"
 TELEMETRY_FILE = DATABASE_DIR / "telemetry.json"
 
-# Score Thresholds
-MIN_SKILL_SCORE = 0.1
+# Score Thresholds & Execution Limits
+DEFAULT_SKILL_THRESHOLD = 0.5
+DEFAULT_DOC_THRESHOLD = 0.3
+MIN_SKILL_SCORE = 0.5
 MIN_RAG_DOC_SCORE = 0.3
+DEFAULT_MAX_TURNS = 3
+MAX_TURNS_LIMIT = 10
 
 # Default Chunking Parameters
 DEFAULT_CHUNK_SIZE = 500  # characters

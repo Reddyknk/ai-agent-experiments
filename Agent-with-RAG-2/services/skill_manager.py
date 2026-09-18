@@ -90,9 +90,8 @@ class SkillManager:
             if not parsed:
                 continue
 
-            # Embed name, description, and trigger queries
-            queries_str = " ".join(parsed["trigger_queries"]) if isinstance(parsed["trigger_queries"], list) else str(parsed["trigger_queries"])
-            embed_text = f"{parsed['name']}. {parsed['description']} Trigger queries: {queries_str}"
+            # Embed name and description fields per SPECIFICATION.md
+            embed_text = f"{parsed['name']}. {parsed['description']}"
 
             vector = ollama_service.generate_embedding(embed_text)
 
@@ -138,10 +137,38 @@ class SkillManager:
             "total_skills": len(existing_data.get("chunks", []))
         }
 
+    def get_all_skills(self) -> List[Dict[str, Any]]:
+        """Return parsed metadata for all skills in skills/ directory."""
+        skills = []
+        if not self.skills_dir.exists():
+            return skills
+        for item in sorted(self.skills_dir.iterdir()):
+            if item.is_dir():
+                parsed = parse_skill_markdown(item)
+                if parsed:
+                    skills.append(parsed)
+        return skills
+
+    def get_skill_by_folder(self, folder_name: str) -> Optional[Dict[str, Any]]:
+        """Retrieve single skill by folder name."""
+        skill_path = self.skills_dir / folder_name
+        if skill_path.exists() and skill_path.is_dir():
+            parsed = parse_skill_markdown(skill_path)
+            if parsed:
+                return {
+                    "folder_name": folder_name,
+                    "name": parsed["name"],
+                    "description": parsed["description"],
+                    "score": 1.0,
+                    "full_text": parsed["full_text"],
+                    "path": parsed["path"]
+                }
+        return None
+
     def match_skills(self, user_query: str, min_score: float = MIN_SKILL_SCORE, conversation_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Query the skill vector database.
-        Returns skills with similarity score > min_score (default 0.5).
+        Returns skills with similarity score > min_score (default from UI or 0.5).
         """
         results = skill_vector_store.query_similar(user_query, top_k=5, min_score=min_score, conversation_id=conversation_id, invoker="skill search")
         matched = []

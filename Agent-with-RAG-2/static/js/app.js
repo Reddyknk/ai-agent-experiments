@@ -17,6 +17,7 @@ let allEventsCache = [];
 document.addEventListener('DOMContentLoaded', () => {
   initHealthPolling();
   loadModelsList();
+  loadSkillsDropdown();
   loadIngestData();
   fetchTelemetryData();
   fetchLogsData();
@@ -164,6 +165,47 @@ function onModelChange() {
   }
 }
 
+function clampMaxTurns(input) {
+  let val = parseInt(input.value, 10);
+  if (isNaN(val) || val < 1) val = 1;
+  if (val > 10) val = 10;
+  input.value = val;
+}
+
+function onSkillsModeChange() {
+  const select = document.getElementById('chat-skills-select');
+  const thresholdBox = document.getElementById('skill-threshold-box');
+  if (!select || !thresholdBox) return;
+  if (select.value === 'vector_store') {
+    thresholdBox.style.display = 'flex';
+  } else {
+    thresholdBox.style.display = 'none';
+  }
+}
+
+async function loadSkillsDropdown() {
+  const select = document.getElementById('chat-skills-select');
+  if (!select) return;
+  try {
+    const res = await fetch('/api/skills/list');
+    const json = await res.json();
+    if (json.status === 'success' && json.skills) {
+      select.innerHTML = `
+        <option value="vector_store" selected>Vector Store</option>
+        <option value="llm_selected">LLM Selected</option>
+      `;
+      json.skills.forEach(skill => {
+        const opt = document.createElement('option');
+        opt.value = skill.folder_name;
+        opt.textContent = skill.name;
+        select.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.error('Failed to load skills dropdown:', err);
+  }
+}
+
 async function sendChatMessage() {
   const input = document.getElementById('chat-input');
   const query = input.value.trim();
@@ -179,6 +221,15 @@ async function sendChatMessage() {
   }
   const maxRagChunks = parseInt(document.getElementById('rag-max-chunks').value, 10) || 5;
   const customEndpoint = document.getElementById('chat-custom-endpoint').value;
+
+  const maxTurnsInput = document.getElementById('chat-max-turns');
+  const maxTurns = maxTurnsInput ? Math.min(Math.max(1, parseInt(maxTurnsInput.value, 10) || 3), 10) : 3;
+  const skillsSelect = document.getElementById('chat-skills-select');
+  const skillsMode = skillsSelect ? skillsSelect.value : 'vector_store';
+  const skillThresholdInput = document.getElementById('chat-skill-threshold');
+  const skillThreshold = skillThresholdInput ? (parseFloat(skillThresholdInput.value) || 0.5) : 0.5;
+  const docThresholdInput = document.getElementById('doc-threshold');
+  const docThreshold = docThresholdInput ? (parseFloat(docThresholdInput.value) || 0.3) : 0.3;
 
   // Use a new conversation ID for each question per specification
   const questionConvId = `conv-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
@@ -203,7 +254,11 @@ async function sendChatMessage() {
         max_tokens: maxTokens,
         max_rag_chunks: maxRagChunks,
         custom_endpoint: customEndpoint,
-        conversation_id: questionConvId
+        conversation_id: questionConvId,
+        skills_mode: skillsMode,
+        skill_threshold: skillThreshold,
+        doc_threshold: docThreshold,
+        max_turns: maxTurns
       })
     });
 

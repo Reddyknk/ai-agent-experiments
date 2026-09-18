@@ -148,6 +148,10 @@ def chat():
     max_rag_chunks = int(data.get("max_rag_chunks", 5))
     custom_endpoint = data.get("custom_endpoint")
     conversation_id = data.get("conversation_id")
+    skills_mode = data.get("skills_mode", "vector_store")
+    skill_threshold = float(data.get("skill_threshold", config.DEFAULT_SKILL_THRESHOLD))
+    doc_threshold = float(data.get("doc_threshold", config.DEFAULT_DOC_THRESHOLD))
+    max_turns = min(int(data.get("max_turns", config.DEFAULT_MAX_TURNS)), config.MAX_TURNS_LIMIT)
 
     result = orchestrator.process_chat(
         query=query,
@@ -156,10 +160,32 @@ def chat():
         max_tokens=max_tokens,
         max_rag_chunks=max_rag_chunks,
         custom_endpoint=custom_endpoint,
-        conversation_id=conversation_id
+        conversation_id=conversation_id,
+        skills_mode=skills_mode,
+        skill_threshold=skill_threshold,
+        doc_threshold=doc_threshold,
+        max_turns=max_turns
     )
 
     return jsonify({"status": "success", "data": result})
+
+@app.route("/api/skills/list", methods=["GET"])
+def list_skills():
+    """
+    List all available skills from the skills/ directory.
+    """
+    skills = skill_manager.get_all_skills()
+    return jsonify({
+        "status": "success",
+        "skills": [
+            {
+                "folder_name": s["folder_name"],
+                "name": s["name"],
+                "description": s["description"]
+            }
+            for s in skills
+        ]
+    })
 
 # ----------------- Ingestion & Vector Storage APIs -----------------
 @app.route("/api/ingest", methods=["POST"])

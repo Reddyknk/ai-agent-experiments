@@ -1,6 +1,6 @@
 ---
 name: Document Vector Database Retriever Skill
-description: Retrieve relevant context text chunks from the local document vector database with similarity score exceeding MIN_RAG_DOC_SCORE (0.3) for factual grounding.
+description: Retrieve relevant context text chunks from the local document vector database about Agent and RAG technology, marketing strategy, and financial reports for factual grounding.
 Trigger Queries:
   - What does our company marketing strategy say about enterprise acquisition?
   - Retrieve details from the annual financial report about revenue and operating expenses

@@ -72,6 +72,15 @@ body {
   gap: 12px;
 }
 
+.app-brand-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .brand-icon {
   width: 34px;
   height: 34px;
