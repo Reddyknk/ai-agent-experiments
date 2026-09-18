@@ -1,6 +1,6 @@
 ---
 name: Document Vector Database Retriever Skill
-description: Retrieve relevant context text chunks from the local document vector database about Agent and RAG technology, marketing strategy, and financial reports for factual grounding.
+description: Get the list of text chunks from the document vector database. This tool can be used to get the list of text chunks from the document vector database about Agent and RAG technology, marketing strategy, and financial reports.
 Trigger Queries:
   - What does our company marketing strategy say about enterprise acquisition?
   - Retrieve details from the annual financial report about revenue and operating expenses

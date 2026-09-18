@@ -222,3 +222,36 @@ def test_chat_with_custom_parameters(client):
     assert data["status"] == "success"
     assert "answer" in data["data"]
     assert "steps" in data["data"]
+
+def test_document_search_tool():
+    import importlib.util
+    from pathlib import Path
+    from config import SKILLS_DIR
+    tool_path = SKILLS_DIR / "document-retriever-skill" / "tools" / "document_search_tool.py"
+    assert tool_path.exists()
+    spec = importlib.util.spec_from_file_location("document_search_tool", str(tool_path))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    res = mod.search_documents(query="Agent RAG technology", top_k=3, min_score=0.1)
+    assert isinstance(res, list)
+    alias_res = mod.get_document_chunks(query="Agent RAG technology", top_k=3, min_score=0.1)
+    assert isinstance(alias_res, list)
+
+def test_google_adk_agent_chat(client):
+    res = client.post(
+        "/api/chat",
+        json={
+            "query": "What is the weather in London?",
+            "agent_type": "google_adk",
+            "model": "gemini-3.6-flash"
+        }
+    )
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    chat_data = data["data"]
+    assert "response" in chat_data or "answer" in chat_data
+    assert chat_data.get("agent_type") == "google_adk"
+    assert "steps" in chat_data
+    assert len(chat_data["steps"]) >= 3
+

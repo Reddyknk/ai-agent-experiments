@@ -17,6 +17,7 @@ from services.llm_service import llm_service
 from services.telemetry_service import telemetry_service
 from services.log_service import audit_logger
 from services.agent_orchestrator import orchestrator
+from services.google_adk_agent import google_adk_agent
 
 app = Flask(
     __name__,
@@ -152,20 +153,36 @@ def chat():
     skill_threshold = float(data.get("skill_threshold", config.DEFAULT_SKILL_THRESHOLD))
     doc_threshold = float(data.get("doc_threshold", config.DEFAULT_DOC_THRESHOLD))
     max_turns = min(int(data.get("max_turns", config.DEFAULT_MAX_TURNS)), config.MAX_TURNS_LIMIT)
+    agent_type = data.get("agent_type", "custom")  # "custom" or "google_adk"
 
-    result = orchestrator.process_chat(
-        query=query,
-        model=model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        max_rag_chunks=max_rag_chunks,
-        custom_endpoint=custom_endpoint,
-        conversation_id=conversation_id,
-        skills_mode=skills_mode,
-        skill_threshold=skill_threshold,
-        doc_threshold=doc_threshold,
-        max_turns=max_turns
-    )
+    if agent_type == "google_adk":
+        result = google_adk_agent.process_chat(
+            query=query,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_rag_chunks=max_rag_chunks,
+            custom_endpoint=custom_endpoint,
+            conversation_id=conversation_id,
+            skills_mode=skills_mode,
+            skill_threshold=skill_threshold,
+            doc_threshold=doc_threshold,
+            max_turns=max_turns
+        )
+    else:
+        result = orchestrator.process_chat(
+            query=query,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_rag_chunks=max_rag_chunks,
+            custom_endpoint=custom_endpoint,
+            conversation_id=conversation_id,
+            skills_mode=skills_mode,
+            skill_threshold=skill_threshold,
+            doc_threshold=doc_threshold,
+            max_turns=max_turns
+        )
 
     return jsonify({"status": "success", "data": result})
 

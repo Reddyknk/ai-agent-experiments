@@ -105,7 +105,10 @@ Press `CTRL+C` in the terminal running `app.py`. The registered exit handlers wi
 ## 5. User Guide
 
 ### 1. Chat & Knowledge Synthesis
-- **Model Selection**: Defaults to `gemma-4-26b-a4b-it`. On startup, the application fetches active text-generation models directly from the Google AI Studio API and populates the dropdown menu (e.g., `gemma-4-26b-a4b-it`, `gemini-2.5-flash`, `gemini-2.5-pro`, etc.), or choose **Custom Model** to enter your own endpoint URL (e.g., `http://127.0.0.1:8000/v1/chat/completions`).
+- **Agent Selection**:
+  - **Custom Agent (Default)**: The multi-turn cognitive loop described in the specification, incorporating skill vector matching, procedural SOP plans, and tool/document loops.
+  - **Google ADK LlmAgent**: Autonomous agent powered by `google.adk.agents.LlmAgent` named `"Chat Agent with RAG"`. Operates with bound skill tools and document search, equipped with fine-grained callback telemetry and payload logging.
+- **Model Selection**: Defaults to `gemma-4-26b-a4b-it`. On startup, the application fetches active text-generation models directly from the Google AI Studio API and populates the dropdown menu (e.g., `gemma-4-26b-a4b-it`, `gemini-3.6-flash`, `gemini-flash-lite-latest`, etc.), or choose **Custom Model** to enter your own endpoint URL (e.g., `http://127.0.0.1:8000/v1/chat/completions`).
 - **Inference & Orchestration Parameters**:
   - **Temperature**: Adjust generation creativity (0.0 to 2.0).
   - **Max Tokens**: Enforced below model maximum limit.
@@ -119,8 +122,8 @@ Press `CTRL+C` in the terminal running `app.py`. The registered exit handlers wi
 - **Multi-Turn Cognitive Loop**:
   - If no skill matches, answers directly using a simple AI assistant prompt.
   - If a skill matches, prompts the LLM for a structured execution plan or directive.
-  - If directed, runs procedural tools or searches the document vector store (only when `document-retriever-skill` is matched/selected).
-  - Feeds results back into the model in a feedback loop up to **Max Turns** until the final answer is synthesized.
+  - If directed, runs procedural tools or searches the document vector store via `tools/document_search_tool.py`.
+  - Feeds results back into the model in a feedback loop up to **Max Turns** until the final answer is synthesized with an assistant system prompt.
 - **Interacting with Skills & RAG**:
   - *Weather query*: "What is the weather and local time in Tokyo?"
   - *Registry query*: "Who is the Principal AI Engineer and where are they located?"
@@ -181,6 +184,7 @@ Agent-with-RAG-2/
 │   ├── skill_manager.py        # Skill scanner, parser, and execution router
 │   ├── llm_service.py          # Google AI Studio and custom LLM synthesis
 │   ├── agent_orchestrator.py   # Multi-step pipeline coordinator
+│   ├── google_adk_agent.py     # Google ADK LlmAgent service implementation
 │   ├── telemetry_service.py    # Metric aggregation & interval bucketing
 │   └── log_service.py          # Key-redacting JSON audit logger
 ├── skills/                     # Skill plugins with SOPs and execution scripts
@@ -196,6 +200,9 @@ Agent-with-RAG-2/
 │   │   └── scripts/stock_search.py
 │   └── document-retriever-skill/ # Vector DB RAG retriever
 │       └── SKILL.md
+├── tools/                      # Procedural tools module
+│   ├── __init__.py
+│   └── document_search_tool.py # Document vector database retrieval tool
 ├── static/                     # Frontend static assets
 │   ├── css/style.css           # Premium responsive UI styling
 │   └── js/app.js               # Frontend application controller
@@ -220,4 +227,4 @@ Run the full pytest suite to verify all modules:
 ```bash
 python3 -m pytest tests/ -v
 ```
-All 19 unit and API integration tests will run and validate vector similarity, chunk deduplication, skill execution, key redaction, multi-turn tool loops, and API endpoints.
+All 21 unit and API integration tests will run and validate vector similarity, chunk deduplication, skill execution, key redaction, multi-turn tool loops, document search tools, Google ADK LlmAgent invocation, and API endpoints.

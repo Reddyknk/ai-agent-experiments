@@ -309,11 +309,8 @@ class AgentOrchestrator:
                 if doc_context_snippets:
                     context_block += "--- Document Vector DB Chunks ---\n" + "\n\n".join(doc_context_snippets) + "\n"
 
-                system_instruction = (
-                    "You are an advanced AI Agent equipped with Retrieval-Augmented Generation (RAG) and dynamic tool execution. "
-                    "Always synthesize answers grounded factually in the provided evidence. "
-                    "If specific metrics, figures, names, or real-time status are present in the context, present them clearly."
-                )
+                # Per SPECIFICATION.md: "The last llm call should use typical system prompt as an assistant to answer the question. The final output of the agent is the response from this last llm call."
+                system_instruction = "You are a helpful assistant. Answer the user's question accurately based on the provided context."
 
                 if context_block.strip():
                     full_prompt = (
@@ -444,3 +441,5 @@ class AgentOrchestrator:
 
 # Global singleton
 orchestrator = AgentOrchestrator()
+agent_orchestrator = orchestrator
+

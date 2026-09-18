@@ -222,6 +222,9 @@ async function sendChatMessage() {
   const maxRagChunks = parseInt(document.getElementById('rag-max-chunks').value, 10) || 5;
   const customEndpoint = document.getElementById('chat-custom-endpoint').value;
 
+  const agentSelect = document.getElementById('chat-agent-select');
+  const agentType = agentSelect ? agentSelect.value : 'custom';
+
   const maxTurnsInput = document.getElementById('chat-max-turns');
   const maxTurns = maxTurnsInput ? Math.min(Math.max(1, parseInt(maxTurnsInput.value, 10) || 3), 10) : 3;
   const skillsSelect = document.getElementById('chat-skills-select');
@@ -249,6 +252,7 @@ async function sendChatMessage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: query,
+        agent_type: agentType,
         model: model,
         temperature: temperature,
         max_tokens: maxTokens,
@@ -267,16 +271,17 @@ async function sendChatMessage() {
 
     if (json.status === 'success') {
       const respData = json.data;
+      const tokensMeta = respData.tokens ? ` | Tokens: ${respData.tokens.input} in, ${respData.tokens.output} out` : '';
 
       appendChatMessage(
         'agent',
-        respData.answer,
-        `Conv ID: ${respData.conversation_id} | Model: ${respData.model_used} | Tokens: ${respData.tokens.input} in, ${respData.tokens.output} out | Latency: ${respData.latency_ms}ms`,
+        respData.response || respData.answer || '',
+        `Conv ID: ${respData.conversation_id} | Agent: ${respData.agent_type === 'google_adk' ? 'Google ADK LlmAgent' : 'Custom Agent'} | Model: ${respData.model_used || model}${tokensMeta} | Latency: ${respData.latency_ms}ms`,
         respData.steps || []
       );
 
       // Render retrieved context evidence
-      renderRetrievedEvidence(respData.retrieved_evidence);
+      renderRetrievedEvidence(respData.evidence || respData.retrieved_evidence || []);
     } else {
       appendChatMessage('agent', `Error: ${json.message}`);
     }

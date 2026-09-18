@@ -85,42 +85,53 @@
       <div class="cards-grid-2">
         <!-- Card 1: Chat with the Agent -->
         <div class="ui-card">
-          <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
+          <!-- Row 1: Title and Agent dropdown on the right side of the card -->
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <div class="card-title">💬 Chat with the Agent</div>
-            <div class="card-header-controls" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-              <div class="control-item">
-                <label for="rag-max-chunks">📚 Max Chunks:</label>
-                <select id="rag-max-chunks" class="control-select">
-                  <option value="1">1</option>
-                  <option value="3">3</option>
-                  <option value="5" selected>5</option>
-                  <option value="8">8</option>
-                  <option value="10">10</option>
-                </select>
-              </div>
-
-              <div class="control-item">
-                <label for="chat-max-turns">🔄 Max Turns:</label>
-                <input type="number" id="chat-max-turns" class="control-input" value="3" min="1" max="10"
-                  style="width: 55px;" oninput="clampMaxTurns(this)">
-              </div>
-
-              <div class="control-item">
-                <label for="chat-skills-select">⚡ Skills:</label>
-                <select id="chat-skills-select" class="control-select" onchange="onSkillsModeChange()">
-                  <option value="vector_store" selected>Vector Store</option>
-                  <option value="llm_selected">LLM Selected</option>
-                </select>
-              </div>
-
-              <div class="control-item" id="skill-threshold-box">
-                <label for="chat-skill-threshold">🎯 Threshold:</label>
-                <input type="number" id="chat-skill-threshold" class="control-input" value="0.5" min="0.0" max="1.0"
-                  step="0.05" style="width: 65px;">
-              </div>
+            <div class="control-item">
+              <label for="chat-agent-select">🤖 Agent:</label>
+              <select id="chat-agent-select" class="control-select">
+                <option value="custom" selected>Custom Agent</option>
+                <option value="google_adk">Google ADK LlmAgent</option>
+              </select>
             </div>
           </div>
 
+          <!-- Row 2: Max Turns, Max Chunks, Skills & Threshold -->
+          <div class="card-sub-header" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08));">
+            <div class="control-item">
+              <label for="chat-max-turns">🔄 Max Turns:</label>
+              <input type="number" id="chat-max-turns" class="control-input" value="3" min="1" max="10"
+                style="width: 55px;" oninput="clampMaxTurns(this)">
+            </div>
+
+            <div class="control-item">
+              <label for="rag-max-chunks">📚 Max Chunks:</label>
+              <select id="rag-max-chunks" class="control-select">
+                <option value="1">1</option>
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="8">8</option>
+                <option value="10">10</option>
+              </select>
+            </div>
+
+            <div class="control-item">
+              <label for="chat-skills-select">⚡ Skills:</label>
+              <select id="chat-skills-select" class="control-select" onchange="onSkillsModeChange()">
+                <option value="vector_store" selected>Vector Store</option>
+                <option value="llm_selected">LLM Selected</option>
+              </select>
+            </div>
+
+            <div class="control-item" id="skill-threshold-box">
+              <label for="chat-skill-threshold">🎯 Threshold:</label>
+              <input type="number" id="chat-skill-threshold" class="control-input" value="0.5" min="0.0" max="1.0"
+                step="0.05" style="width: 65px;">
+            </div>
+          </div>
+
+          <!-- Chat Conversation UI inside the Card -->
           <div class="chat-container">
             <div id="chat-history" class="chat-history">
               <div class="chat-message agent">

@@ -39,18 +39,25 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
   - To the left of the “Shutdown” button add a status box that shows the status of the backend Agent.
     - Periodically check the Agent API’s health and display the status of all the services needed to support the Agent.
   - The first page is called “Chat & Knowledge Synthesis”.
-    - At the same level as the page title at the right side of the screen, put a drop down box showing the currently selected.
-      - Check Google AI Studio for the active models that are capable of synthesizing and outputting text then list them in the dropdown. Include the option to select a custom model. When the Custom model is selected, show a text box for the user to enter the API Endpoint of the model. The default text should be the last endpoint entered. If none exists, put “http://127.0.0.1:8000/v1/chat/completions”.
+    - At the same level as the page title at the right side of the screen, put a drop down box showing the currently selected mocdel.
+      - Check Google AI Studio for the active models that are capable of synthesizing and outputting text then list them in the dropdown.
+      - Include the option to select a Custom model. When the Custom model is selected, show a text box for the user to enter the API Endpoint of the model. The default text should be the last endpoint entered. If none exists, put “http://127.0.0.1:8000/v1/chat/completions”.
       - To the left of the model choice dropdown, add a box to allow the user to select the “Temperature” parameter to send to the model.
       - To the left of the temperature box, add a text box to allow the user to set the “Max Tokens” parameter to send to the model. Do not allow the user to set the number larger than the max tokens of the model selected.
     - Below the page title, there should be two cards. The card on the left is the “Chat with the Agent”. Allow the user to type text to chat with the Agent.
-      - Add the dropbox to allow the user to select the maximum number of RAG chunks to send to the model.
-      - Add a text box for the user to select the "Max Turns" the default is 3. Do not allow the user to set the number larger than 10.
-      - Add a dropbox called "Skills" to allow the user to select skills to use.
+      - Add a drop down box called "Agent" on the right side of the card. The choices are: Custom Agent, Google ADK LlmAgent.
+        - If the user selects Custom Agent, use the agent described in this document.
+        - If the user selects Google ADK Agent, use the google adk agent
+      - In the next row, add a text box for the user to select the "Max Turns" the default is 3. Do not allow the user to set the number larger than 10.
+      - To the right, add a dropbox to allow the user to select the maximum number of RAG chunks to send to the model. Default value is 5.
+      - Next, add a dropbox called "Skills" to allow the user to select skills to use.
         - First option in the dropbox should be "Vector Store" as the default option. The Agent will query the skills vector store to select the skills to use in the prompt to the model. Add a text box "Threshold" for the user to enter the threshold to use for the vector store query. The default value is 0.5.
         - The second option should be "LLM Selected". The Agent will ask the LLM to select the skills to use in the prompt to the model.
         - The remainder of the selection should be the list of skills in skills/ folder. The Agent will use the skills selected in the prompt to the model.
-      - Use a new conversation ID for each question 
+      - At the bottom of the card, put a text box for the user to enter the chat message.
+        - Use a new conversation ID for each question
+        - When the user clicks on the "Send" button or presses the Enter key, the agent will process the message.
+      - Use the typical chat user interface to display the chat messages and the agent's responses.
       - Once the response is completed, display the response.
         - Add the detail box in the response with a button named “Show Logs”. Within the detail box, add bubbles showing the name of the components that generated the logs (such as Agent, Tools, RAG, Skills), icons appropriate for the components, and the elapse time of each step.
         - When the user clicks on the "Show Logs" button, the detail box should expand to show the full content of the step including the logs. Use scroll area in the bubble if the content is too long.
@@ -128,12 +135,19 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
   - If no skill is found, send the user query to the LLM using the simple system prompt as an assistant to answer the question.
   - If there are skills found, send the user message and the skills to the LLM to get the instruction or plan for the tool execution.
   - If the LLM determines that a procedural tool should be executed, execute the tool to obtain the needed information. Send a prompt to the LLM with the results from the tool. Repeat until the the final answer is received. Limit the number of loops no more than MAX_LLM_TURNS.
+  - The last llm call should use typical system prompt as an assistant to answer the question. The final output of the agent is the response from this last llm call.
   - Only perform vector search for documents when the skill search result and the model direct the Agent to perform the search.
 
+- Create a python code in services/ folder to use LlmAgent from Google ADK.
+  - Use the model selected in the Chat & Knowledge Synthesis page.
+  - Set the name to "Chat Agent with RAG".
+  - User the skills and tools available in skills/ folder.
+  - Create logs for all the invocations and responses when the Agent is invoked. Include all the details needed to show in the Audit Log & Event page. Creat logs when the Agent invoke and receive response from the model. Include the actual payload.
 - Create the following skills using the folder structure in the Directory Architecture. The skills should at least have the name, description, Trigger Queries, etc:
   - Get the time and weather of the city from the site that doesn't require API key
   - Get the list of stocks with the highest percentage increase or lowest percentage decrease based on the chat question
-  - Get the list of text chunks from the document vector database. The score must  be higher than MIN_RAG_DOC_SCORE defined in config.py with the initial score of 0.3.
+  - Get the list of text chunks from the document vector database. Write the SKILL.md file description to indicate that the tool can be used to get the list of text chunks from the document vector database
+    - Create the python tool in the tools/ folder called document_search_tool.py that can be used to get the list of text chunks from the document vector database
   - Get the name, city, country, or job title of the person in the CSV file.
     - Create 20 random samples of the CSV file with name, city, country, or job title for the tool to query
 
