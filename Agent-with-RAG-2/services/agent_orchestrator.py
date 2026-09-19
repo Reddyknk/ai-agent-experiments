@@ -141,6 +141,7 @@ class AgentOrchestrator:
             invoker="user",
             recipient="agent",
             payload={
+                "agent_type": "Custom Agent",
                 "query": query,
                 "model": model,
                 "temperature": temperature,
@@ -182,6 +183,25 @@ class AgentOrchestrator:
             )
 
             matched_skills = skill_manager.match_skills(query, min_score=skill_threshold, conversation_id=cid)
+            for s in matched_skills:
+                skill_folder = s.get("folder_name", "skill")
+                doc_name = f"{skill_folder}/SKILL.md"
+                retrieved_evidence.append({
+                    "step": "Skill Vector Store",
+                    "source_type": "skill_vector_store",
+                    "store": "skills",
+                    "document_name": doc_name,
+                    "title": f"Skill: {s.get('name', skill_folder)} (Score: {s.get('score', 0.0)})",
+                    "score": s.get("score", 0.0),
+                    "content": s.get("full_text") or s.get("description", ""),
+                    "details": {
+                        "document_name": doc_name,
+                        "folder_name": skill_folder,
+                        "name": s.get("name"),
+                        "description": s.get("description"),
+                        "score": s.get("score")
+                    }
+                })
 
             audit_logger.log_call(
                 event_type="skill search",
@@ -231,6 +251,24 @@ class AgentOrchestrator:
 
             if chosen_skill:
                 matched_skills = [chosen_skill]
+                skill_folder = chosen_skill.get("folder_name", "skill")
+                doc_name = f"{skill_folder}/SKILL.md"
+                retrieved_evidence.append({
+                    "step": "Skill Selection",
+                    "source_type": "skill_vector_store",
+                    "store": "skills",
+                    "document_name": doc_name,
+                    "title": f"Skill: {chosen_skill.get('name', skill_folder)}",
+                    "score": chosen_skill.get("score", 1.0),
+                    "content": chosen_skill.get("full_text") or chosen_skill.get("description", ""),
+                    "details": {
+                        "document_name": doc_name,
+                        "folder_name": skill_folder,
+                        "name": chosen_skill.get("name"),
+                        "description": chosen_skill.get("description"),
+                        "score": chosen_skill.get("score", 1.0)
+                    }
+                })
             step_skill_elapsed = round((time.time() - step_skill_start) * 1000, 2)
 
         else:
@@ -238,6 +276,24 @@ class AgentOrchestrator:
             chosen_skill = skill_manager.get_skill_by_folder(skills_mode)
             if chosen_skill:
                 matched_skills = [chosen_skill]
+                skill_folder = chosen_skill.get("folder_name", "skill")
+                doc_name = f"{skill_folder}/SKILL.md"
+                retrieved_evidence.append({
+                    "step": "Skill Selection",
+                    "source_type": "skill_vector_store",
+                    "store": "skills",
+                    "document_name": doc_name,
+                    "title": f"Skill: {chosen_skill.get('name', skill_folder)}",
+                    "score": chosen_skill.get("score", 1.0),
+                    "content": chosen_skill.get("full_text") or chosen_skill.get("description", ""),
+                    "details": {
+                        "document_name": doc_name,
+                        "folder_name": skill_folder,
+                        "name": chosen_skill.get("name"),
+                        "description": chosen_skill.get("description"),
+                        "score": chosen_skill.get("score", 1.0)
+                    }
+                })
 
         # Step 3: Handle Case Where No Skill is Found / Selected
         step_plan_elapsed = 0.0
@@ -273,15 +329,7 @@ class AgentOrchestrator:
             skills_text_blocks = []
             for i, s in enumerate(top_skills, 1):
                 folder = s.get("folder_name", "")
-                tool_func = ""
-                if "weather" in folder or "time" in folder:
-                    tool_func = "env_tools.get_weather_and_time(city: str)"
-                elif "person" in folder or "registry" in folder:
-                    tool_func = "person_search.query_person_registry(keyword: str, field: str = None)"
-                elif "stock" in folder:
-                    tool_func = "stock_search.analyze_stock_query(query: str)"
-                elif "document" in folder or "retriever" in folder:
-                    tool_func = "document_search_tool.search_documents(query: str, top_k: int)"
+                tool_func = skill_manager.get_skill_tool_signature(s)
 
                 skills_text_blocks.append(
                     f"- Skill #{i}: {s['name']} (Score: {s.get('score', 0.0)})\n"
@@ -375,6 +423,9 @@ class AgentOrchestrator:
                         chunk_idx = chunk.get("chunk_index", 0)
                         evidence_item = {
                             "step": "Document Search",
+                            "source_type": "document_vector_store",
+                            "store": "documents",
+                            "document_name": doc_name,
                             "title": f"Doc: {doc_name} (Chunk #{chunk_idx}, Score: {chunk['score']})",
                             "score": chunk["score"],
                             "content": chunk["text"],
@@ -390,24 +441,11 @@ class AgentOrchestrator:
                     # 2. Procedural Tools from matching skills
                     for s in top_skills:
                         folder_name = s.get("folder_name", "")
-                        skill_name = s.get("name", "")
                         if "retriever" in folder_name.lower() or "document" in folder_name.lower():
                             continue
                         if folder_name in executed_skills:
                             continue
-                        skill_kw = folder_name.replace("-skill", "").split("-")
-                        is_match = (
-                            tool_to_execute.lower() in folder_name.lower() or
-                            folder_name.lower() in tool_to_execute.lower() or
-                            tool_to_execute.lower() in skill_name.lower() or
-                            skill_name.lower() in tool_to_execute.lower() or
-                            any(kw in tool_to_execute.lower() for kw in skill_kw) or
-                            ("env_tools" in tool_to_execute.lower() and "weather" in folder_name.lower()) or
-                            ("person_search" in tool_to_execute.lower() and "person" in folder_name.lower()) or
-                            ("stock_search" in tool_to_execute.lower() and "stock" in folder_name.lower()) or
-                            tool_to_execute.lower() in ["execute_tool", "true"] or
-                            not latest_plan_text
-                        )
+                        is_match = skill_manager.is_skill_tool_match(s, tool_to_execute) or not latest_plan_text
                         if is_match:
                             executed_skills.add(folder_name)
                             executed_tools.add(tool_to_execute)
@@ -419,8 +457,10 @@ class AgentOrchestrator:
                                 arguments=tool_args
                             )
                             evidence_item = {
-                                "step": "Skill Search",
-                                "title": f"Skill: {s['name']} (Score: {s.get('score', 0.0)})",
+                                "step": "Tool Execution",
+                                "source_type": "procedural_tool",
+                                "document_name": f"{folder_name}/tool_output",
+                                "title": f"Tool Output: {s['name']}",
                                 "score": s.get("score", 0.0),
                                 "content": exec_result.get("evidence_text", ""),
                                 "details": exec_result.get("result_data", {})

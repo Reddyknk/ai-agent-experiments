@@ -9,6 +9,8 @@ from services.log_service import redact_sensitive_data, audit_logger
 
 @pytest.fixture
 def client():
+    from services.ollama_service import ollama_service
+    ollama_service.ensure_service_started()
     app.config["TESTING"] = True
     with app.test_client() as client:
         yield client
@@ -314,7 +316,25 @@ def test_google_adk_agent_chat(client):
     assert data["status"] == "success"
     chat_data = data["data"]
     assert "response" in chat_data or "answer" in chat_data
-    assert chat_data.get("agent_type") == "google_adk"
+    assert chat_data.get("agent_type") == "Google ADK Agent"
     assert "steps" in chat_data
     assert len(chat_data["steps"]) >= 3
+
+def test_delete_document_endpoint(client):
+    from services.vector_store import doc_vector_store
+    # Ingest a temporary dummy text document
+    doc_vector_store.ingest_text_document("test_to_delete.txt", "This is a temporary document chunk text for testing deletion.")
+    stats_before = doc_vector_store.get_stats()
+    assert any(d["name"] == "test_to_delete.txt" for d in stats_before["documents"])
+
+    # Call delete endpoint
+    res = client.post("/api/vector/delete", json={"document_name": "test_to_delete.txt"})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    assert data["deleted_document"] == "test_to_delete.txt"
+
+    # Verify deleted
+    stats_after = doc_vector_store.get_stats()
+    assert not any(d["name"] == "test_to_delete.txt" for d in stats_after["documents"])
 

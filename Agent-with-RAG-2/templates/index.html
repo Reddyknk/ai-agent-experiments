@@ -236,7 +236,8 @@
                 DB Wiki</button>
               <button class="preset-btn"
                 onclick="setIngestUrl('https://python.langchain.com/docs/introduction/')">LangChain Docs</button>
-              <button class="preset-btn" onclick="setIngestUrl('sample_docs')">Local: sample_docs/</button>
+              <button class="preset-btn"
+                onclick="setIngestUrl('https://en.wikipedia.org/wiki/Large_language_model')">LLM Wikipedia</button>
             </div>
           </div>
 
@@ -287,11 +288,12 @@
                   <th>Document Name</th>
                   <th>Chunks Created</th>
                   <th>Total Characters</th>
+                  <th style="width: 90px; text-align: right;">Action</th>
                 </tr>
               </thead>
               <tbody id="ingested-docs-tbody">
                 <tr>
-                  <td colspan="3" style="text-align: center; color: var(--text-muted);">No documents ingested yet.</td>
+                  <td colspan="4" style="text-align: center; color: var(--text-muted);">No documents ingested yet.</td>
                 </tr>
               </tbody>
             </table>
@@ -480,7 +482,7 @@
           <div class="card-title">💬 User Conversations (Select a row to inspect associated events)</div>
           <div style="font-size: 0.85rem; color: var(--text-muted);" id="conv-total-count">Total Conversations: 0</div>
         </div>
-        <div style="max-height: 460px; overflow-y: auto;">
+        <div style="max-height: 380px; overflow-y: auto;">
           <table class="ui-table">
             <thead>
               <tr>
@@ -488,12 +490,13 @@
                 <th>Conversation ID</th>
                 <th>User Query</th>
                 <th>Agent Response</th>
+                <th>Agent Type</th>
                 <th>Number of Events (occured during the conversation)</th>
               </tr>
             </thead>
             <tbody id="conversations-tbody">
               <tr>
-                <td colspan="5" style="text-align: center; color: var(--text-muted);">No conversation logs recorded yet.
+                <td colspan="6" style="text-align: center; color: var(--text-muted);">No conversation logs recorded yet.
                 </td>
               </tr>
             </tbody>
@@ -504,7 +507,7 @@
       <!-- Table 2: Associated Logs for Selected Conversation -->
       <div class="ui-card">
         <div class="card-header">
-          <div class="card-title" id="events-table-title">📜 Conversation Event Trace</div>
+          <div class="card-title" id="events-table-title">Events for Conversation for None</div>
           <span style="font-size: 0.8rem; color: var(--text-muted);">Click any row to inspect raw payload &amp;
             response</span>
         </div>
@@ -512,7 +515,7 @@
           <table class="ui-table">
             <thead>
               <tr>
-                <th>Timestamp</th>
+                <th>Time and Date (local time)</th>
                 <th>Event Type</th>
                 <th>Invoker</th>
                 <th>Target</th>

@@ -253,6 +253,22 @@ def reset_vector_db():
     )
     return jsonify({"status": "success", "message": "Document database reset successfully"})
 
+@app.route("/api/vector/delete", methods=["POST", "DELETE"])
+def delete_vector_document():
+    """
+    Delete an individual document and its chunks from the vector database.
+    Per SPECIFICATION.md: 'Allow the user to delete any document from the DB by using the Delete button on the right side of the document row'
+    """
+    data = request.get_json(silent=True) or {}
+    doc_name = data.get("document_name", "").strip() or request.args.get("document_name", "").strip()
+    if not doc_name:
+        return jsonify({"status": "error", "message": "document_name is required"}), 400
+
+    res = doc_vector_store.delete_document(doc_name)
+    if res.get("status") == "error":
+        return jsonify(res), 404
+    return jsonify(res)
+
 @app.route("/api/skills/update", methods=["POST"])
 def update_skills_db():
     """

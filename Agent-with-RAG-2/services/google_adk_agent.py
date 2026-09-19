@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from config import (
     DEFAULT_DOC_THRESHOLD,
+    DEFAULT_SKILL_THRESHOLD,
     DEFAULT_LLM_MODEL,
     GEMINI_API_KEY,
     SKILLS_DIR
@@ -202,9 +203,14 @@ class GoogleAdkAgentService:
                 conversation_id=cid
             )
             for chk in chunks:
+                doc_name = chk.get("document_name", "Document")
+                chunk_idx = chk.get("chunk_index", 0)
                 retrieved_evidence.append({
                     "step": "Document Search",
-                    "title": f"Doc: {chk.get('document_name')} (Chunk #{chk.get('chunk_index')}, Score: {chk.get('score')})",
+                    "source_type": "document_vector_store",
+                    "store": "documents",
+                    "document_name": doc_name,
+                    "title": f"Doc: {doc_name} (Chunk #{chunk_idx}, Score: {chk.get('score')})",
                     "score": chk.get("score"),
                     "content": chk.get("text"),
                     "details": chk
@@ -221,7 +227,7 @@ class GoogleAdkAgentService:
         max_tokens: int = 2048,
         max_rag_chunks: int = 5,
         skills_mode: str = "vector_store",
-        skill_threshold: float = 0.5,
+        skill_threshold: float = DEFAULT_SKILL_THRESHOLD,
         doc_threshold: float = DEFAULT_DOC_THRESHOLD,
         max_turns: int = 3,
         custom_endpoint: Optional[str] = None,
@@ -241,7 +247,7 @@ class GoogleAdkAgentService:
             recipient=self.agent_name,
             payload={
                 "query": query,
-                "agent_type": "google_adk",
+                "agent_type": "Google ADK Agent",
                 "model": model,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
@@ -260,6 +266,29 @@ class GoogleAdkAgentService:
         )
 
         retrieved_evidence: List[Dict[str, Any]] = []
+        if skills_mode == "vector_store":
+            from services.skill_manager import skill_manager
+            matched_skills = skill_manager.match_skills(query, min_score=skill_threshold, conversation_id=cid)
+            for s in matched_skills:
+                skill_folder = s.get("folder_name", "skill")
+                doc_name = f"{skill_folder}/SKILL.md"
+                retrieved_evidence.append({
+                    "step": "Skill Vector Store",
+                    "source_type": "skill_vector_store",
+                    "store": "skills",
+                    "document_name": doc_name,
+                    "title": f"Skill: {s.get('name', skill_folder)} (Score: {s.get('score', 0.0)})",
+                    "score": s.get("score", 0.0),
+                    "content": s.get("full_text") or s.get("description", ""),
+                    "details": {
+                        "document_name": doc_name,
+                        "folder_name": skill_folder,
+                        "name": s.get("name"),
+                        "description": s.get("description"),
+                        "score": s.get("score")
+                    }
+                })
+
         tools = self._get_skill_tool_functions(cid, doc_threshold, max_rag_chunks, retrieved_evidence)
 
         # Build callbacks to record fine-grained LLM payloads
@@ -525,7 +554,7 @@ class GoogleAdkAgentService:
             "evidence": retrieved_evidence,
             "retrieved_evidence": retrieved_evidence,
             "steps": steps,
-            "agent_type": "google_adk"
+            "agent_type": "Google ADK Agent"
         }
 
 

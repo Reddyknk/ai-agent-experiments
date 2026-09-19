@@ -208,6 +208,7 @@ class LogService:
                     "timestamp": entry.get("timestamp"),
                     "user_query": "",
                     "agent_response": "",
+                    "agent_type": "Custom Agent",
                     "total_events": 0,
                     "model_used": "unknown",
                     "status": "completed"
@@ -215,14 +216,17 @@ class LogService:
 
             conversations[cid]["total_events"] += 1
 
-            # Extract user query from invocation to agent
+            # Extract user query and agent type from invocation to agent
             if entry.get("event_type") in ["agent", "User Prompt"]:
                 if entry.get("call_type") == "invocation" or entry.get("invoker") == "user":
-                    if not conversations[cid]["user_query"]:
-                        p = entry.get("payload", {})
-                        if isinstance(p, dict):
+                    p = entry.get("payload", {})
+                    if isinstance(p, dict):
+                        if p.get("agent_type"):
+                            conversations[cid]["agent_type"] = p.get("agent_type")
+                        if not conversations[cid]["user_query"]:
                             conversations[cid]["user_query"] = p.get("query") or p.get("message", "")
-                        else:
+                    else:
+                        if not conversations[cid]["user_query"]:
                             conversations[cid]["user_query"] = str(p)
 
             # Extract final agent response from response to user
@@ -230,6 +234,8 @@ class LogService:
                 if entry.get("call_type") == "response" or entry.get("recipient") == "user":
                     p = entry.get("payload", {})
                     if isinstance(p, dict):
+                        if p.get("agent_type"):
+                            conversations[cid]["agent_type"] = p.get("agent_type")
                         resp = p.get("response") or p.get("content", "")
                         if resp:
                             conversations[cid]["agent_response"] = resp

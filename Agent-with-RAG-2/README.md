@@ -122,7 +122,7 @@ Press `CTRL+C` in the terminal running `app.py`. The registered exit handlers wi
 - **Multi-Turn Cognitive Loop**:
   - If no skill matches, answers directly using a simple AI assistant prompt.
   - If a skill matches, prompts the LLM for a structured execution plan or directive.
-  - If directed, runs procedural tools or searches the document vector store via `tools/document_search_tool.py`.
+  - If directed, runs procedural tools or searches the document vector store via `skills/document-retriever-skill/tools/document_search_tool.py`.
   - Feeds results back into the model in a feedback loop up to **Max Turns** until the final answer is synthesized with an assistant system prompt.
 - **Interacting with Skills & RAG**:
   - *Weather query*: "What is the weather and local time in Tokyo?"
@@ -199,10 +199,9 @@ Agent-with-RAG-2/
 │   │   ├── SKILL.md
 │   │   └── scripts/stock_search.py
 │   └── document-retriever-skill/ # Vector DB RAG retriever
-│       └── SKILL.md
-├── tools/                      # Procedural tools module
-│   ├── __init__.py
-│   └── document_search_tool.py # Document vector database retrieval tool
+│       ├── SKILL.md
+│       └── tools/
+│           └── document_search_tool.py # Document vector database retrieval tool
 ├── static/                     # Frontend static assets
 │   ├── css/style.css           # Premium responsive UI styling
 │   └── js/app.js               # Frontend application controller

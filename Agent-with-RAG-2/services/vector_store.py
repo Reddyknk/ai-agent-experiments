@@ -62,7 +62,7 @@ def chunk_text(text: str, chunk_size: int = DEFAULT_CHUNK_SIZE, overlap: int = D
 class VectorStore:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.is_ingesting = False
         self._ensure_db_file()
 
@@ -96,6 +96,53 @@ class VectorStore:
         with self.lock:
             with open(self.db_path, "w", encoding="utf-8") as f:
                 json.dump({"embedding_model": model, "documents": {}, "chunks": []}, f, indent=2)
+
+    def delete_document(self, doc_name: str) -> Dict[str, Any]:
+        """
+        Delete any document from the DB and all its associated chunks.
+        Per SPECIFICATION.md: 'Allow the user to delete any document from the DB by using the Delete button on the right side of the document row'
+        """
+        with self.lock:
+            data = self._load()
+            docs = data.get("documents", {})
+            chunks = data.get("chunks", [])
+
+            if doc_name not in docs and not any(c.get("metadata", {}).get("document_name") == doc_name for c in chunks):
+                return {
+                    "status": "error",
+                    "message": f"Document '{doc_name}' not found in database."
+                }
+
+            # Remove doc from documents dict
+            docs.pop(doc_name, None)
+
+            # Filter out chunks
+            original_count = len(chunks)
+            remaining_chunks = [c for c in chunks if c.get("metadata", {}).get("document_name") != doc_name]
+            deleted_chunks_count = original_count - len(remaining_chunks)
+
+            data["documents"] = docs
+            data["chunks"] = remaining_chunks
+
+            with open(self.db_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+
+        audit_logger.log_event(
+            event_type="Document Deleted",
+            invoker="User",
+            target="VectorStore",
+            payload={"document_name": doc_name},
+            response={"deleted_chunks": deleted_chunks_count, "remaining_chunks": len(remaining_chunks)},
+            description=f"Deleted document '{doc_name}' ({deleted_chunks_count} chunks removed)"
+        )
+
+        return {
+            "status": "success",
+            "message": f"Document '{doc_name}' successfully deleted.",
+            "deleted_document": doc_name,
+            "deleted_chunks": deleted_chunks_count,
+            "remaining_chunks": len(remaining_chunks)
+        }
 
     def get_stats(self) -> Dict[str, Any]:
         data = self._load()

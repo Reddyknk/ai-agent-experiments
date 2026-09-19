@@ -188,6 +188,44 @@ class SkillManager:
             })
         return matched
 
+    def get_skill_tool_signature(self, skill_info: Dict[str, Any]) -> str:
+        """
+        Dynamically determine procedural tool signature available for this skill.
+        Minimizes skill-specific code in the orchestrator per SPECIFICATION.md.
+        """
+        folder = skill_info.get("folder_name", "").lower()
+        if "weather" in folder or "time" in folder:
+            return "env_tools.get_weather_and_time(city: str)"
+        elif "person" in folder or "registry" in folder:
+            return "person_search.query_person_registry(keyword: str, field: str = None)"
+        elif "stock" in folder:
+            return "stock_search.analyze_stock_query(query: str)"
+        elif "document" in folder or "retriever" in folder:
+            return "document_search_tool.search_documents(query: str, top_k: int)"
+        return f"{skill_info.get('folder_name')}.execute(arguments: dict)"
+
+    def is_skill_tool_match(self, skill_info: Dict[str, Any], tool_to_execute: str) -> bool:
+        """
+        Check if the tool requested by LLM matches this skill.
+        """
+        folder_name = skill_info.get("folder_name", "").lower()
+        skill_name = skill_info.get("name", "").lower()
+        tool_lower = (tool_to_execute or "").lower().strip()
+        if not tool_lower:
+            return False
+        skill_kw = folder_name.replace("-skill", "").split("-")
+        return (
+            tool_lower in folder_name or
+            folder_name in tool_lower or
+            tool_lower in skill_name or
+            skill_name in tool_lower or
+            any(kw in tool_lower for kw in skill_kw) or
+            ("env_tools" in tool_lower and ("weather" in folder_name or "time" in folder_name)) or
+            ("person_search" in tool_lower and "person" in folder_name) or
+            ("stock_search" in tool_lower and "stock" in folder_name) or
+            tool_lower in ["execute_tool", "true"]
+        )
+
     def execute_skill(
         self,
         skill_info: Dict[str, Any],

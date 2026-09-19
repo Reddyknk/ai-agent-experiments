@@ -417,27 +417,59 @@ function renderRetrievedEvidence(evidenceList) {
     return;
   }
 
-  // Group evidence by step: Skill Search, Document Search
+  // Group all results by the document per SPECIFICATION.md:
+  // "Display the contents of the information retrieved from the vector store.
+  //  - Include results from the skills vector store and the documents vector store.
+  //  - Group the results by the documents"
   const groups = {};
   evidenceList.forEach(item => {
-    const step = item.step || 'General Evidence';
-    if (!groups[step]) groups[step] = [];
-    groups[step].push(item);
+    let docName = item.document_name || item.details?.document_name;
+    if (!docName) {
+      if (item.title && item.title.startsWith('Doc: ')) {
+        docName = item.title.replace('Doc: ', '').split(' (')[0];
+      } else if (item.title && item.title.startsWith('Skill: ')) {
+        const sName = item.title.replace('Skill: ', '').split(' (')[0];
+        docName = `${item.details?.folder_name || sName}/SKILL.md`;
+      } else if (item.details?.folder_name) {
+        docName = `${item.details.folder_name}/SKILL.md`;
+      } else if (item.details?.name) {
+        docName = `${item.details.name}/SKILL.md`;
+      } else {
+        docName = item.details?.source || 'Context Document';
+      }
+    }
+
+    if (!groups[docName]) groups[docName] = [];
+    groups[docName].push(item);
   });
 
-  for (const [stepName, items] of Object.entries(groups)) {
+  for (const [docName, items] of Object.entries(groups)) {
     const groupHeader = document.createElement('div');
     groupHeader.className = 'evidence-group-title';
-    groupHeader.textContent = `▶ Step: ${stepName} (${items.length} items)`;
+    groupHeader.textContent = `▶ Document: ${docName} (${items.length} ${items.length === 1 ? 'item' : 'items'})`;
     container.appendChild(groupHeader);
 
     items.forEach(ev => {
       const card = document.createElement('div');
       card.className = 'evidence-card';
+
+      const isSkillStore = ev.source_type === 'skill_vector_store' || ev.store === 'skills' || (ev.step && ev.step.toLowerCase().includes('skill'));
+      const storeLabel = isSkillStore ? 'Skills Vector Store' : 'Documents Vector Store';
+      const storeBadgeStyle = isSkillStore
+        ? 'background: rgba(139, 92, 246, 0.2); color: #c4b5fd;'
+        : 'background: rgba(16, 185, 129, 0.15); color: #34d399;';
+
+      const scoreText = (ev.score !== undefined && ev.score !== null)
+        ? `Score: ${typeof ev.score === 'number' ? ev.score.toFixed(3) : ev.score}`
+        : '';
+
       card.innerHTML = `
         <div class="evidence-header">
           <strong>${escapeHtml(ev.title || 'Evidence Chunk')}</strong>
-          <span class="evidence-badge">Score: ${ev.score || 'N/A'}</span>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span class="evidence-badge" style="${storeBadgeStyle} font-size: 0.72rem;">${storeLabel}</span>
+            ${scoreText ? `<span class="evidence-badge">${scoreText}</span>` : ''}
+          </div>
         </div>
         <div class="evidence-body">${escapeHtml(ev.content || '')}</div>
       `;
@@ -475,7 +507,7 @@ async function loadVectorStorageStatus() {
     const docs = data.documents || [];
 
     if (docs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--text-muted);">No documents ingested yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No documents ingested yet.</td></tr>';
     } else {
       docs.forEach(d => {
         const tr = document.createElement('tr');
@@ -483,6 +515,9 @@ async function loadVectorStorageStatus() {
           <td><strong>${escapeHtml(d.name)}</strong></td>
           <td>${d.chunks_count}</td>
           <td>${d.total_characters.toLocaleString()}</td>
+          <td style="text-align: right;">
+            <button class="btn-danger btn-sm" style="padding: 4px 10px; font-size: 0.8rem;" onclick="deleteDocument('${escapeHtml(d.name)}')">Delete</button>
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -665,6 +700,27 @@ async function resetDatabase() {
     loadVectorStorageStatus();
   } catch (e) {
     alert(`Reset error: ${e.message}`);
+  }
+}
+
+async function deleteDocument(docName) {
+  if (!confirm(`Are you sure you want to delete document "${docName}" from the database? All its chunks will be deleted.`)) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/vector/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_name: docName })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      loadVectorStorageStatus();
+    } else {
+      alert(`Failed to delete document: ${data.message || 'Unknown error'}`);
+    }
+  } catch (e) {
+    alert(`Error deleting document: ${e.message}`);
   }
 }
 
@@ -863,7 +919,7 @@ async function fetchLogsData(selectedConvId = null) {
     document.getElementById('conv-total-count').textContent = `Total Conversations: ${convs.length}`;
 
     if (convs.length === 0) {
-      convTbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No conversation logs recorded yet.</td></tr>';
+      convTbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No conversation logs recorded yet.</td></tr>';
     } else {
       convs.forEach(c => {
         const tr = document.createElement('tr');
@@ -876,6 +932,7 @@ async function fetchLogsData(selectedConvId = null) {
           <td><code>${escapeHtml(c.conversation_id)}</code></td>
           <td>${escapeHtml((c.user_query || '').slice(0, 45))}${c.user_query?.length > 45 ? '...' : ''}</td>
           <td>${escapeHtml((c.agent_response || '').slice(0, 45))}${c.agent_response?.length > 45 ? '...' : ''}</td>
+          <td><span class="evidence-badge">${escapeHtml(c.agent_type || 'Custom Agent')}</span></td>
           <td>${c.total_events}</td>
         `;
         tr.style.cursor = 'pointer';
@@ -895,17 +952,17 @@ async function fetchLogsData(selectedConvId = null) {
     allEventsCache = events;
 
     document.getElementById('events-table-title').textContent =
-      `📜 Events for Conversation: ${data.selected_conversation_id || 'None'}`;
+      `Events for Conversation for ${data.selected_conversation_id || 'None'}`;
 
     if (events.length === 0) {
       eventsTbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No events logged for this conversation.</td></tr>';
     } else {
       events.forEach((ev, idx) => {
         const tr = document.createElement('tr');
-        const localTime = new Date(ev.timestamp).toLocaleTimeString();
+        const localTimeAndDate = new Date(ev.timestamp).toLocaleString();
         const callTypeTag = ev.call_type ? `<span style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; background: ${ev.call_type === 'response' ? 'rgba(16, 185, 129, 0.15); color: #34d399;' : 'rgba(99, 102, 241, 0.15); color: #818cf8;'}">${escapeHtml(ev.call_type)}</span>` : '';
         tr.innerHTML = `
-          <td>${localTime}</td>
+          <td>${localTimeAndDate}</td>
           <td><span class="evidence-badge">${escapeHtml(ev.event_type)}</span>${callTypeTag}</td>
           <td>${escapeHtml(ev.invoker)}</td>
           <td>${escapeHtml(ev.target || ev.recipient || '')}</td>
