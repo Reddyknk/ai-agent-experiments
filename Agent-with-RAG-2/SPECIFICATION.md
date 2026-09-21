@@ -138,10 +138,11 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
     - When the row is clicked, open a pop up window to show all the detailed logs including the JSON payload in human readable format
 
 ## Requirements
-- Import API key and other information from .env file
+- Import API key and all the contents from the .env file
 - All of the backend code should be written in python, the web app should be built using flask.
 - All calls to external resources like Google AI Studio or any external API should be done from the backend python code, not from the frontend.
 - Use local ollama to vectorize the text.
+- Use chromadb for vector store
 - Upon start up, the app should check whether ollama is currently running and start the service if it is not already started.
 - When the app terminates, shutdown the ollama service if the app started the service. If it is already running when the app starts, do not shutdown ollama.
 - On start up, get the list of ONLY active LLM models for text generation from Google AI Studio API that can be used by the Agent. Use the list in the dropdown menu in the Chat page.
@@ -170,8 +171,8 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
             }
           }
     - If the LLM determines that a procedural tool should be executed, execute the tool to obtain the needed information. Send a prompt to the LLM with the results from the tool. Repeat until the the final answer is received. Limit the number of loops no more than MAX_LLM_TURNS.
-    - Mimimize skill-specific code in the orchestrator
-    - The last llm call should use typical system prompt as an assistant to answer the question. The final output of the agent is the response from this last llm call.
+    - Minimize skill-specific code in the orchestrator
+    - The last llm call should use typical system prompt as an assistant to answer the question. The final output of the agent is the response from this last LLM call.
     - Only perform vector search for documents when the skill search result and the model direct the Agent to perform the search.
     - Minimize the number of loops to obtain the final answer. The maximum number of loops should be Max turns configured in the GUI.
     - Format the final output to make it easy for human reading and understanding.
@@ -183,7 +184,7 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
     - Use the skills and tools available in skills/ folder.
     - Create logs for all the invocations and responses when the Agent is invoked.
       - Include all the details needed to show in the Audit Log & Event page.
-      - Creat logs when the Agent invoke and receive response from the model. Include the actual payload.
+      - Create logs when the Agent invoke and receive response from the model. Include the actual payload.
 
 ## Sample Skills and Tools
 - Create the following skills using the folder structure in the Directory Architecture. The skills should at least have the name, description, Trigger Queries, etc:
@@ -219,3 +220,5 @@ The App should have 4 pages switchable with the tabs or buttons at the top of th
   - how to start all the services
   - how to shutdown all the services
   - user guide with information on how to use the system
+
+- Create a requirements.txt and put all the libraries used by the app
