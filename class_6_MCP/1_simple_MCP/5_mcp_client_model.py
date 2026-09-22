@@ -71,3 +71,50 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+"""
+1. Local Tool Discovery (STDIO):
+  * mcp_client = Client(server_path) launches mcp_server.py as a local child process.
+  * During session initialization, the client retrieves the function definitions and parameter schemas for roll_dice and add_numbers.
+Passing MCP Tools to the LLM (HTTPS):
+
+2. The client passes tools=[mcp_client.session] into Gemini's types.GenerateContentConfig.
+  * The Google GenAI SDK automatically converts the MCP tool schemas into Gemini Function Declarations and sends them along with your user prompt to Google's servers over HTTPS.
+  * Gemini Function Calling Decision (Cloud -> Local):
+
+3. Gemini determines that to answer "Hey! Can you roll 5 dice for me?", it needs to invoke roll_dice(n_dice=5).
+  * It sends a FunctionCall instruction back to the client SDK.
+  * Local MCP Execution (Local STDIO):
+
+4. The SDK's Automatic Function Calling (AFC) executes the call against mcp_client.session.
+  * The client sends a JSON-RPC tools/call over stdin to mcp_server.py.
+  * mcp_server.py runs Python's random.randint(...) and writes the result list back on stdout.
+  * Response Synthesis (Local -> Cloud -> Terminal):
+
+5. The client sends the dice results back to Gemini over HTTPS.
+  * Gemini crafts the final conversational response and returns it.
+  * The client displays the response to the user and loops back for the next input.
+
+ ┌─────────────────┐
+ │   User / CLI    │
+ └────────┬────────┘
+          │ (Terminal Input / Output)
+          ▼
+ ┌─────────────────────────────────────────────────────────────┐
+ │                    5_mcp_client_model.py                    │
+ │                                                             │
+ │  ┌─────────────────────────┐   ┌─────────────────────────┐  │
+ │  │      Google GenAI       │   │      FastMCP Client     │  │
+ │  │      (genai.Client)     │   │      (ClientSession)    │  │
+ │  └────────────┬────────────┘   └────────────┬────────────┘  │
+ └───────────────┼─────────────────────────────┼───────────────┘
+                 │                             │
+    HTTPS / REST │                             │ STDIO (JSON-RPC)
+  (Google Cloud) │                             │ (Local Pipes)
+                 ▼                             ▼
+       ┌──────────────────┐          ┌──────────────────┐
+       │  Google Gemini   │          │  Local Process   │
+       │    (Cloud LLM)   │          │  (mcp_server.py) │
+       └──────────────────┘          └──────────────────┘
+
+"""

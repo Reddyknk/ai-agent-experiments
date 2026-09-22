@@ -19,6 +19,7 @@ async def fetch_github_file_via_mcp():
         return
 
     # 1. Configure the official GitHub MCP server
+    # [ Python Client ] -> [STDIO] -> [Network (HTTPS REST API)] -> [Remote Github MCP Server]
     # We pass the required authentication token directly into the server's environment block
     server_params = StdioServerParameters(
         command="npx",
