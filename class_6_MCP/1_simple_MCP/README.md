@@ -8,24 +8,28 @@ A minimal, working demonstration of building and connecting a **Model Context Pr
 
 This project demonstrates how tools exposed by an MCP server can be invoked across multiple client scenarios:
 
-1. **Custom MCP Server (`mcp_server.py`)**: Uses `FastMCP` to register and expose a custom tool (`roll_dice`) that simulates rolling 6-sided dice.
-2. **Client Options**:
-   - **Option 1: Direct Tool Client (`mcp_client_tool.py`)**: Connects directly to the local MCP server using standard MCP `ClientSession` and stdio transport. Directly invokes the `roll_dice` tool without requiring an LLM or API keys.
-   - **Option 2: LLM Model Client (`mcp_client_model.py`)**: Bridges MCP tools directly into Google Gemini using `FastMCP` and `google-genai`. Gemini autonomously decides when and how to call `roll_dice`, returning a natural language answer.
-   - **Option 3: External Community MCP Client (`mcp_client_git.py`)**: Demonstrates connecting to pre-built, open-source MCP servers (such as `mcp-server-git`) launched dynamically via `uvx`. It lists the server's discovered tools and programmatically calls `git_log`.
+1. **Custom MCP Server (`mcp_server.py` / `server.py`)**: Uses `FastMCP` to register and expose custom tools (`roll_dice` and `add_numbers`).
+2. **Client Implementations**:
+   - **Client 1: Direct Tool Client (`1_mcp_client_tool.py`)**: Connects directly to the local MCP server using standard MCP `ClientSession` and stdio transport without requiring an LLM or API keys.
+   - **Client 2: LLM Model Client (`2_mcp_client_model.py`)**: Bridges MCP tools directly into Google Gemini using `FastMCP` and `google-genai`. Gemini autonomously decides when and how to call tools, returning a natural language answer.
+   - **Client 3: Local Git Community MCP Client (`3_mcp_client_git.py`)**: Demonstrates connecting to pre-built, open-source MCP servers (such as `mcp-server-git`) launched dynamically via `uvx`. It lists the server's discovered tools and programmatically calls `git_log`.
+   - **Client 4: Low-Level Raw JSON-RPC Client (`4_mcp_client_raw.py`)**: Directly interacts with the MCP server over raw stdio subprocess pipes using raw JSON-RPC 2.0 messages, performing the mandatory protocol handshake (`initialize` -> `notifications/initialized` -> `tools/call`).
+   - **Client 5: Remote GitHub MCP Client (`5_mcp_client_github.py`)**: Connects to the official `@modelcontextprotocol/server-github` via `npx`, reading `GITHUB_PERSONAL_ACCESS_TOKEN` from `.env`, and fetches repository files via `get_file_contents`.
 
-Options 1 & 2 run an interactive loop prompting `"How many dice rolls should be made: "` and continue until the user enters a non-number (e.g., `q` or `exit`).
+Clients 1 & 2 run an interactive loop prompting `"How many dice rolls should be made: "` and continue until the user enters a non-number (e.g., `q` or `exit`).
 
 ---
 
 ## File Structure
 
-- [mcp_server.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/mcp_server.py): FastMCP server definition with the `@mcp.tool` decorator for `roll_dice`.
-- [mcp_client_tool.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/mcp_client_tool.py): Direct MCP client using `ClientSession` and stdio communication to call `roll_dice` directly.
-- [mcp_client_model.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/mcp_client_model.py): LLM agent client managing the MCP session and delegating tool calling to Gemini via `google-genai`.
-- [mcp_client_git.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/mcp_client_git.py): Stdio client connecting to the open-source `mcp-server-git` via `uvx`, discovering tools, and running `git_log`.
-- [requirements.txt](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/requirements.txt): Required Python dependencies (`fastmcp`, `google-genai`, `python-dotenv`).
-- [.env.example](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/.env.example): Template for environment variables and model configuration.
+- [mcp_server.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/mcp_server.py): FastMCP server definition with the `@mcp.tool()` decorators for `add_numbers` and `roll_dice`.
+- [1_mcp_client_tool.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/1_mcp_client_tool.py): Direct MCP client using `ClientSession` and stdio communication to call `roll_dice` directly.
+- [2_mcp_client_model.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/2_mcp_client_model.py): LLM agent client managing the MCP session and delegating tool calling to Gemini via `google-genai`.
+- [3_mcp_client_git.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/3_mcp_client_git.py): Stdio client connecting to the open-source `mcp-server-git` via `uvx`, discovering tools, and running `git_log`.
+- [4_mcp_client_raw.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/4_mcp_client_raw.py): Low-level raw JSON-RPC 2.0 client communicating over raw subprocess stdin/stdout pipes.
+- [5_mcp_client_github.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/5_mcp_client_github.py): GitHub MCP client running `@modelcontextprotocol/server-github` via `npx` with authentication via `.env`.
+- [requirements.txt](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/requirements.txt): Required Python dependencies (`fastmcp`, `google-genai`, `python-dotenv`, `uv`).
+- [.env.example](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/.env.example): Template for environment variables (`GOOGLE_API_KEY`, `GITHUB_PERSONAL_ACCESS_TOKEN`, model configs).
 - [server.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/server.py): Standalone server script mirror.
 
 ---
@@ -33,8 +37,10 @@ Options 1 & 2 run an interactive loop prompting `"How many dice rolls should be 
 ## Prerequisites
 
 - **Python**: Version 3.10 or higher
-- A **Google Gemini API Key** (required for `mcp_client_model.py`, get one from [Google AI Studio](https://aistudio.google.com/))
-- **`uv` / `uvx`** (required for `mcp_client_git.py` to pull and run open-source MCP servers dynamically: `pip install uv` or `pipx install uv`)
+- A **Google Gemini API Key** (required for `2_mcp_client_model.py`, get one from [Google AI Studio](https://aistudio.google.com/))
+- A **GitHub Personal Access Token** (required for `5_mcp_client_github.py`, get one from GitHub Settings -> Developer Settings)
+- **`uv` / `uvx`** (required for `3_mcp_client_git.py` to pull and run open-source MCP servers dynamically: `pip install uv` or `pipx install uv`)
+- **Node.js & `npx`** (required for `5_mcp_client_github.py` to run `@modelcontextprotocol/server-github`)
 
 ---
 
@@ -53,7 +59,7 @@ source .venv/bin/activate
 
 ### 3. Install Dependencies
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ### 4. Configure Environment Variables
@@ -62,10 +68,11 @@ Copy [.env.example](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experi
 cp .env.example .env
 ```
 
-Open `.env` and fill in your Gemini API key (needed for the model client):
+Open `.env` and configure your keys:
 ```dotenv
 GOOGLE_GENAI_USE_VERTEXAI=FALSE
 GOOGLE_API_KEY=your_gemini_api_key_here
+GITHUB_PERSONAL_ACCESS_TOKEN=your_github_personal_access_token_here
 
 # Optional: customize model settings
 MODEL="gemini-flash-lite-latest"
@@ -76,11 +83,11 @@ FALLBACK_MODEL="gemini-flash-latest"
 
 ## How to Run
 
-### Option 1: Direct Tool Client (`mcp_client_tool.py`)
+### Client 1: Direct Tool Client (`1_mcp_client_tool.py`)
 This client directly communicates with the MCP server over stdio without needing an LLM or API keys.
 
 ```bash
-python mcp_client_tool.py
+python 1_mcp_client_tool.py
 ```
 
 **What it does:**
@@ -92,11 +99,11 @@ python mcp_client_tool.py
 
 ---
 
-### Option 2: LLM Model Client (`mcp_client_model.py`)
+### Client 2: LLM Model Client (`2_mcp_client_model.py`)
 This client uses Google Gemini with the MCP server session registered as live tools.
 
 ```bash
-python mcp_client_model.py
+python 2_mcp_client_model.py
 ```
 
 **What it does:**
@@ -110,11 +117,11 @@ python mcp_client_model.py
 
 ---
 
-### Option 3: External Git MCP Client (`mcp_client_git.py`)
+### Client 3: Local Git MCP Client (`3_mcp_client_git.py`)
 This client demonstrates how an MCP client can run and interact with third-party, pre-packaged open-source MCP servers using `uvx` over standard stdio:
 
 ```bash
-python mcp_client_git.py
+python 3_mcp_client_git.py
 ```
 
 **What it does:**
@@ -122,6 +129,35 @@ python mcp_client_git.py
 2. Establishes an MCP `ClientSession` over stdio.
 3. Queries and prints all available Git tools registered on the server (`git_status`, `git_diff_unstaged`, `git_commit`, `git_log`, etc.).
 4. Programmatically executes the `git_log` tool against the current Git repository and prints the latest commit history.
+
+---
+
+### Client 4: Low-Level Raw JSON-RPC Client (`4_mcp_client_raw.py`)
+This client demonstrates how the MCP protocol works under the hood over raw stdio pipes without using the MCP SDK:
+
+```bash
+python 4_mcp_client_raw.py
+```
+
+**What it does:**
+1. Spawns `server.py` using `asyncio.create_subprocess_exec` with piped stdin/stdout.
+2. Performs the mandatory MCP `initialize` handshake request and reads server capabilities.
+3. Sends the mandatory `notifications/initialized` acknowledgment.
+4. Sends a raw `tools/call` request for `add_numbers` with arguments `{"a": 12.5, "b": 7.5}` and parses the returned JSON-RPC response.
+
+---
+
+### Client 5: Remote GitHub MCP Client (`5_mcp_client_github.py`)
+This client connects to GitHub's MCP server via `npx` using your personal access token:
+
+```bash
+python 5_mcp_client_github.py
+```
+
+**What it does:**
+1. Loads `GITHUB_PERSONAL_ACCESS_TOKEN` securely from `.env`.
+2. Spawns `@modelcontextprotocol/server-github` via `npx -y`.
+3. Calls the `get_file_contents` tool to retrieve source files directly from a target GitHub repository.
 
 ---
 
@@ -141,9 +177,9 @@ fastmcp dev mcp_server.py
 
 ## Technical Details & Compatibility Notes
 
-In [mcp_client_model.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/mcp_client_model.py), compatibility bridges are applied for smooth integration between `FastMCP` and `google.genai`:
+In [2_mcp_client_model.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/2_mcp_client_model.py), compatibility bridges are applied for smooth integration between `FastMCP` and `google.genai`:
 - **Deprecation Warning Filter**: Suppresses `FastMCPDeprecationWarning` emitted during MCP v1 compatibility checks.
 - **Deepcopy Patch (`ClientSession.__deepcopy__`)**: Allows `mcp_client.session` to be passed into `GenerateContentConfig(tools=[...])` without failing internal config deepcopying.
 - **Schema Sanitizer (`_safe_filter_to_supported_schema`)**: Prevents crashes in `google.genai._mcp_utils` when non-dict/boolean tool schema constructs are parsed.
 
-In [mcp_client_tool.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/mcp_client_tool.py), `sys.executable` is used to launch the server sub-process with the same active Python interpreter environment.
+In [1_mcp_client_tool.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/1_mcp_client_tool.py) and [4_mcp_client_raw.py](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/1_simple_MCP/4_mcp_client_raw.py), `sys.executable` is used to launch the server sub-process with the same active Python interpreter environment.

@@ -1,15 +1,13 @@
+# This code access a local Git MCP server
+
 import asyncio
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 async def run_free_mcp_server():
-    # 1. Configure the free, open-source Git MCP server
-    # We use 'uvx' (or 'npx' for JS servers) to pull and execute the server instantly
-    server_params = StdioServerParameters(
-        command="uvx",
-        args=["mcp-server-git"],
-        env=None
-    )
+    # 1. Configure the free, open-source Git MCP server. We use 'uvx' (or 'npx' for JS servers) to pull and execute the server instantly
+    server_params = StdioServerParameters( command="uvx",
+        args=["mcp-server-git"], env=None )
 
     print("Connecting to the free Git MCP Server...")
     

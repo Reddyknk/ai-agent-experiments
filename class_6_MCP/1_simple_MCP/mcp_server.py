@@ -5,7 +5,13 @@ from fastmcp import FastMCP
 # Initialize the FastMCP server
 mcp = FastMCP(name="Math Wizard")
 
-@mcp.tool
+@mcp.tool()
+def add_numbers(a: float, b: float) -> str:
+    """Adds two numbers together. Aguements are two floating point numbers.
+    Output is the result in string format."""
+    return str(a + b)
+
+@mcp.tool()
 def roll_dice(n_dice: int) -> list[int]:
     """
     Rolls n_dice number of 6-sided dice and returns the results.
