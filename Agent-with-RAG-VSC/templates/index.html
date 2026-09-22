@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent with RAG</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <img src="{{ url_for('static', filename='images/app-icon.gif') }}" alt="App icon" class="brand-icon" onerror="this.style.display='none'" />
+          <h1>Agent with RAG</h1>
+        </div>
+        <div class="toolbar-right">
+          <div class="status-box">
+            <span class="status-dot live"></span>
+            <span id="backend-status-label">Backend Agent: Online</span>
+          </div>
+          <button class="shutdown-btn" id="shutdown-button">Shutdown</button>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="Main navigation">
+        <button class="tab active" data-page="chat">💬 Chat & Knowledge Synthesis</button>
+        <button class="tab" data-page="vector">🧠 Vector DB Ingestion</button>
+        <button class="tab" data-page="telemetry">📈 Telemetry</button>
+        <button class="tab" data-page="audit">🧾 Audit Log & Event</button>
+      </nav>
+
+      <main>
+        <section class="page active" id="page-chat">
+          <div class="page-header">
+            <h2>Chat & Knowledge Synthesis</h2>
+            <div class="controls-inline">
+              <label>Temperature
+                <input type="number" id="temperature" min="0" max="2" step="0.1" value="0.7" />
+              </label>
+              <label>Max Tokens
+                <input type="number" id="max-tokens" min="1" max="2048" value="256" />
+              </label>
+              <label>Model
+                <select id="model-select">
+                  <option selected>{{ default_model }}</option>
+                  <option>Custom model</option>
+                </select>
+              </label>
+              <label id="custom-endpoint-field" class="hidden-control">Custom Endpoint
+                <input id="custom-endpoint" type="url" value="http://127.0.0.1:8000/v1/chat/completions" />
+              </label>
+            </div>
+          </div>
+
+          <div class="split-grid">
+            <div class="card chat-card">
+              <div class="card-header">
+                <h3>Chat with the Agent</h3>
+                <div class="inline-fields">
+                  <label>Agent
+                    <select id="agent-select">
+                      <option>Custom Agent</option>
+                      <option>Google ADK Agent</option>
+                    </select>
+                  </label>
+                  <label>Max Turns
+                    <input type="number" id="max-turns" min="1" max="10" value="3" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="inline-fields second-row">
+                <label>Skill Selector
+                  <select id="skill-selector">
+                    <option value="vector_store">Vector Store Selects</option>
+                    <option value="llm_selects">LLM Selects</option>
+                  </select>
+                </label>
+                <label>Max RAG Chunks
+                  <select id="rag-chunks">
+                    <option selected>5</option>
+                    <option>3</option>
+                    <option>10</option>
+                  </select>
+                </label>
+                <label id="skill-threshold-field">Threshold
+                  <input type="number" id="threshold" min="0" max="1" step="0.1" value="0.2" />
+                </label>
+              </div>
+
+              <div class="chat-box" id="chat-box" aria-live="polite"></div>
+
+              <form id="chat-form" class="chat-form">
+                <textarea id="chat-input" rows="3" placeholder="Type your question for the agent..." required></textarea>
+                <button type="submit">Send</button>
+              </form>
+            </div>
+
+            <div class="card evidence-card">
+              <div class="card-header">
+                <h3>Retrieved Context Evidence</h3>
+                <label>Doc Threshold
+                  <input type="number" id="doc-threshold" min="0" max="1" step="0.1" value="0.3" />
+                </label>
+              </div>
+              <div class="evidence-list" id="evidence-list">
+                <p class="empty-state">No evidence loaded yet.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-vector">
+          <div class="page-header">
+            <h2>Vector DB Ingestion</h2>
+            <div class="controls-inline">
+              <button class="secondary-btn" id="update-skills-btn">Update Skills Database</button>
+              <label>Embedder
+                <select id="embedder-select">
+                  <option>nomic-embed-text</option>
+                  <option>all-minilm</option>
+                  <option>mxbai-embed-large</option>
+                </select>
+              </label>
+              <div class="stats-mini">
+                <span>Chunks: <strong id="stat-chunks">0</strong></span>
+                <span>Docs: <strong id="stat-docs">0</strong></span>
+                <span>MB: <strong id="stat-mb">0</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="split-grid">
+            <div class="card populate-card">
+              <div class="card-header">
+                <h3>Populate Vector Database</h3>
+              </div>
+              <div class="sample-links">
+                <button type="button" class="sample-link" data-source="https://example.com">Example Web URL</button>
+                <button type="button" class="sample-link" data-source="https://www.nasa.gov">NASA</button>
+                <button type="button" class="sample-link" data-source="https://www.apple.com/newsroom/">Apple Newsroom</button>
+                <button type="button" class="sample-link" data-source="https://www.microsoft.com/en-us/microsoft-365/">Microsoft</button>
+                <button type="button" class="sample-link" data-source="sample_docs">Sample Docs</button>
+              </div>
+              <label class="source-input-label">Source URL or Local Directory
+                <input id="vector-source" type="text" value="sample_docs" />
+              </label>
+              <details class="advanced-card">
+                <summary>Advanced Chunking Parameters</summary>
+                <div class="advanced-body">
+                  <label>Chunk Size
+                    <input type="number" id="chunk-size" value="1200" min="100" step="100" />
+                  </label>
+                  <label>Overlap
+                    <input type="number" id="chunk-overlap" value="150" min="0" step="10" />
+                  </label>
+                </div>
+              </details>
+              <button class="primary-btn" id="populate-db-btn">Populate Vector Database</button>
+            </div>
+
+            <div class="card storage-card">
+              <div class="card-header">
+                <h3>Vector Storage Status</h3>
+                <button class="secondary-btn" id="reset-db-btn">Reset DB</button>
+              </div>
+              <div id="storage-status" class="storage-status">
+                <p class="empty-state">No ingestion activity yet.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bottom-card">
+            <div class="card-header">
+              <h3>Available Embedding Models</h3>
+            </div>
+            <ul class="model-list" id="embedding-model-list">
+              <li><strong>nomic-embed-text</strong> — 768 dims, 8192 context, 274 MB, Installed.</li>
+              <li><strong>all-minilm</strong> — 384 dims, 512 context, 133 MB, Active.</li>
+              <li><strong>mxbai-embed-large</strong> — 1024 dims, 512 context, 435 MB, Available to Pull.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="page" id="page-telemetry">
+          <div class="page-header">
+            <h2>Telemetry</h2>
+            <div class="controls-inline">
+              <label>Model filter
+                <select id="telemetry-model-filter">
+                  <option>All Models</option>
+                  <option>gemma-4-26b-a4b-it</option>
+                  <option>gemini-2.0-flash</option>
+                </select>
+              </label>
+              <button id="refresh-telemetry-btn" class="secondary-btn">Refresh Telemetry</button>
+            </div>
+          </div>
+
+          <div class="stats-row">
+            <div class="stat-box"><span>Total Prompts</span><strong id="total-prompts">0</strong></div>
+            <div class="stat-box"><span>Total Response</span><strong id="total-response">0</strong></div>
+            <div class="stat-box"><span>Total Errors</span><strong id="total-errors">0</strong></div>
+            <div class="stat-box"><span>Total Input Tokens</span><strong id="total-input-tokens">0</strong></div>
+            <div class="stat-box"><span>Total Output Tokens</span><strong id="total-output-tokens">0</strong></div>
+          </div>
+
+          <div class="card throughput-card">
+            <div class="card-header compact">
+              <label>Aggregation
+                <select id="aggregation-select">
+                  <option>1 min</option>
+                  <option selected>15 min</option>
+                  <option>1 hr</option>
+                  <option>1 day</option>
+                </select>
+              </label>
+              <label>Time Range
+                <select id="time-range-select">
+                  <option>Last hr</option>
+                  <option selected>1 day</option>
+                  <option>Week</option>
+                  <option>Month</option>
+                  <option>Custom</option>
+                </select>
+              </label>
+            </div>
+            <div class="chart-grid">
+              <div class="chart-panel">
+                <h4>Prompts, Responses, and Errors</h4>
+                <div class="chart-placeholder" id="throughput-chart">No telemetry yet</div>
+              </div>
+              <div class="chart-panel">
+                <h4>Input / Output Tokens</h4>
+                <div class="chart-placeholder" id="token-chart">No telemetry yet</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card low-performance-card">
+            <h3>Other Important Statistic not Available for Low-Performance Computer</h3>
+            <ul>
+              <li>TTFT: Time to First Token</li>
+              <li>ITL: Inter-Token Latency</li>
+              <li>TPS: Tokens per Second</li>
+              <li>TPOT: Time per Output Token</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="page" id="page-audit">
+          <div class="page-header">
+            <h2>Audit Log & Event</h2>
+            <div class="controls-inline">
+              <button class="secondary-btn" id="clear-logs-btn">Clear Logs</button>
+              <button id="refresh-audit-btn" class="secondary-btn">Refresh</button>
+            </div>
+          </div>
+
+          <div class="stats-row small-rows">
+            <div class="stat-box"><span>Total User Prompts</span><strong id="audit-prompts">0</strong></div>
+            <div class="stat-box"><span>Model Calls</span><strong id="audit-model-calls">0</strong></div>
+            <div class="stat-box"><span>Ollama Embeds</span><strong id="audit-embeds">0</strong></div>
+            <div class="stat-box"><span>Avg Call Latency</span><strong id="audit-latency">0ms</strong></div>
+          </div>
+
+          <div class="table-stack">
+            <div class="table-card">
+              <h3>User Conversations (Select a row to inspect associated events)</h3>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>Time</th><th>Conversation ID</th><th>User Query</th><th>Agent Response</th><th>Agent Type</th><th>Events</th></tr>
+                  </thead>
+                  <tbody id="conversation-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="table-card">
+              <h3 id="event-table-title">Events for Conversation</h3>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>Time</th><th>Event Type</th><th>Invoker</th><th>Target</th><th>Description</th></tr>
+                  </thead>
+                  <tbody id="event-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="shutdown-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="shutdown-dialog-title">
+      <div class="modal-content">
+        <h3 id="shutdown-dialog-title">Shutdown Warning</h3>
+        <p>This will shutdown the app and all services started by it. All users will be affected.</p>
+        <label>
+          Type the phrase to confirm:
+          <input id="shutdown-confirm-input" type="text" placeholder="Shutdown the service" />
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" id="cancel-shutdown-btn">Cancel</button>
+          <button type="button" class="danger-btn" id="confirm-shutdown-btn" disabled>Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="event-detail-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="event-detail-title">
+      <div class="modal-content event-detail-content">
+        <div class="modal-heading">
+          <h3 id="event-detail-title">Event details</h3>
+          <button type="button" class="ghost-btn" id="close-event-detail-btn">Close</button>
+        </div>
+        <pre id="event-detail-content" class="event-detail-json"></pre>
+      </div>
+    </div>
+
+    <div id="clear-logs-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="clear-logs-title">
+      <div class="modal-content">
+        <h3 id="clear-logs-title">Clear Audit Logs</h3>
+        <p>This will permanently delete all recorded conversations and events.</p>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" id="cancel-clear-logs-btn">Cancel</button>
+          <button type="button" class="danger-btn" id="confirm-clear-logs-btn">Clear Logs</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="embedding-model-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="embedding-model-title">
+      <div class="modal-content">
+        <h3 id="embedding-model-title">Change Embedding Model</h3>
+        <p>Changing the embedding model will delete all document and skill vectors.</p>
+        <label>Type <strong>Change the embedding model</strong> to confirm
+          <input id="embedding-confirm-input" type="text" />
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" id="cancel-embedding-btn">Cancel</button>
+          <button type="button" class="danger-btn" id="confirm-embedding-btn" disabled>Delete Data</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  </body>
+</html>

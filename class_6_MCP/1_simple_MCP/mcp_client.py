@@ -31,10 +31,8 @@ env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Constants from .env
-GOOGLE_GENAI_USE_VERTEXAI = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 MODEL = os.getenv("MODEL", "gemma-4-26b-a4b-it")
-FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "gemini-3.5-flash-lite")
 
 async def main():
     # 1. Point the client to your server script

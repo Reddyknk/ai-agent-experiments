@@ -34,7 +34,7 @@ This project demonstrates how an LLM agent powered by Google Gemini can dynamica
 
 ### 1. Clone or Navigate to the Directory
 ```bash
-cd /home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/simple_MCP
+cd ~/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/simple_MCP
 ```
 
 ### 2. Create and Activate a Virtual Environment
@@ -49,7 +49,7 @@ pip install -r requirements.txt
 ```
 
 ### 4. Configure Environment Variables
-Copy [.env.example](file:///home/pi-net/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/simple_MCP/.env.example) to `.env`:
+Copy [.env.example](file:///~/Documents/agent_eng_labs/ai-agent-experiments/class_6_MCP/simple_MCP/.env.example) to `.env`:
 ```bash
 cp .env.example .env
 ```
