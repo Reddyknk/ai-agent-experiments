@@ -1,2 +1,4 @@
 fastmcp>=4.0.0
 mcp>=2.1.0
+pytest>=8.0.0
+

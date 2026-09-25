@@ -73,8 +73,10 @@ This project demonstrates an end-to-end implementation of the [Model Context Pro
 │   └── server.py              # FastMCP server implementing rand_int & rand_real
 ├── client.py                  # Interactive console client with auto-start & dual output
 ├── docker-compose.yml         # Compose configuration to build and run both servers
-├── requirements.txt           # Root client dependencies
+├── requirements.txt           # Root client & test dependencies (fastmcp, mcp, pytest)
 ├── SPECIFICATIONS.md          # Project technical specifications
+├── tests/
+│   └── test_system.py         # Automated pytest suite covering local servers & client CLI integration
 └── README.md                  # Complete documentation and setup guide
 ```
 
@@ -219,7 +221,7 @@ Simply run:
 ```bash
 python client.py
 ```
-> **Note**: If the server containers are not already running, `client.py` will **automatically start them using `docker-compose.yml`**, wait for the endpoints to become healthy, and then connect seamlessly.
+> **Note**: If the server containers are not already running, `client.py` will **automatically start them using `docker-compose.yml`**, auto-resolving Windows Docker Desktop binary paths if necessary, wait for the SSE endpoints to respond with `HTTP 200 OK`, and connect seamlessly.
 
 #### Local Python Mode (without Docker)
 If you prefer running the servers directly as local Python processes without Docker:
@@ -390,5 +392,12 @@ Exiting MCP Client. Goodbye!
 To run all automated verification tests:
 
 ```bash
+# Using pytest directly (when virtualenv is activated)
 pytest tests/test_system.py -v
+
+# Or using python -m pytest
+python -m pytest tests/test_system.py -v
+
+# Or running the test script directly
+python tests/test_system.py
 ```

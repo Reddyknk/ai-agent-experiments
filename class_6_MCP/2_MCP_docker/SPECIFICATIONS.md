@@ -1,40 +1,38 @@
-# SPECIFICATION:
-Create a system of MCP including the server and client app.
+# SPECIFICATION: MCP System (Server & Client App)
+
+Create a system of Model Context Protocol (MCP) servers and an interactive client application.
 
 ## Server - People Info
-- Put the code for the server side in the “PeopleInfo_Server”
-- Put all the libraries needed by the code in the requirements.txt file
-- Create a docker container with the tool that returns the name, city, country, and the position of one or more people who fit the criteria provided in the query.
-    - The tool accepts 2 string parameters.
-    - The first string, "search_for", is the first string.
-    - The second parameter is the string "field_name", which represents the column to search.
-    - The tool uses fuzzy search for the string that matches the query message and returns all the items that match the search.
-    - Create the CSV document “employee_data.csv” with random person name and details that will be used for the data
+- Place all server code in the `PeopleInfo_Server/` folder.
+- Maintain dependency requirements in `PeopleInfo_Server/requirements.txt` (`fastmcp`, `mcp`, `uvicorn`, `sse-starlette`).
+- Containerize the MCP server using Docker listening on port 8001 with SSE transport (`http://0.0.0.0:8001/sse`).
+- Implement the `search_people` tool:
+  - Accepts two string parameters: `search_for` (query string) and `field_name` (column name to search, e.g. `name`, `city`, `country`, `position`).
+  - Performs multi-tier fuzzy matching (exact substring, sequence ratio similarity, and word-level matching).
+  - Loads employee dataset from `PeopleInfo_Server/employee_data.csv`.
 
 ## Server - Random Number
-- Put all the files for the server side in the “RandomNum_Server” folder
-- Put all the libraries needed by the code in the requirements.txt file
-- Create a docker container that will act as MCP server with 2 tools.
-    - The first tool, “rand_int”, accepts 1 integer “max_number” parameter and responds with a random number from 1 to the number provided in the parameter received.
-    - The second tool, “rand_real”, accepts no parameters and returns a random real number from 0 to 1.
+- Place all server code in the `RandomNum_Server/` folder.
+- Maintain dependency requirements in `RandomNum_Server/requirements.txt` (`fastmcp`, `mcp`, `uvicorn`, `sse-starlette`).
+- Containerize the MCP server using Docker listening on port 8002 with SSE transport (`http://0.0.0.0:8002/sse`).
+- Implement two MCP tools:
+  - `rand_int`: Accepts one integer parameter `max_number` and returns a random integer between 1 and `max_number` (inclusive).
+  - `rand_real`: Accepts no parameters and returns a random real float between 0.0 and 1.0.
 
 ## Client
-- Put the code at the root folder
-- Put all the libraries needed by the code in the requirements.txt file
-- Create the client side app that goes through the real steps for MCP client service
-    - The app first check whether the servers are running. If not, start them using the docker-compose.yml file.
-    - Go through the proper steps to connect to the MCP server.
-    - Show a prompt in the text console with the list of tools that are available in the MCP server.
-        - List one tool per line
-        - Each line shows a number starting with 1, the tool name, and the MCP server name
-        - The last item is the option to “Quit” the app
-    - When the user selects a number, display the parameters required by the tool
-    - The user enters the parameters separated by commas
-    - When the user hits <enter>, make the call to the MCP server then print the formatted raw message to the server and the formatted raw response from the server to the console.
-    - Show the prompt for the user to select the tool again.
+- Place root client application code in `client.py`.
+- Maintain root dependencies in `requirements.txt` (`fastmcp`, `mcp`, `pytest`).
+- Implement full MCP client protocol lifecycle:
+  - Check whether MCP server SSE endpoints are active and returning HTTP 200 OK.
+  - Automatically launch missing servers via `docker-compose.yml` if endpoints are not active.
+  - Auto-resolve Docker Desktop environment paths on Windows host machines.
+  - Support a `--local` CLI flag to fall back to running servers directly via local Python `stdio` transport.
+  - Display an interactive console menu listing all discovered tools across servers, indicating tool index, tool name, server name, and a Quit option.
+  - Parse tool input schemas, dynamically format required parameters, and prompt user for comma-separated inputs.
+  - Construct and print the formatted raw JSON-RPC request message, execute the tool call, print the formatted raw JSON-RPC response, and output a formatted human-readable presentation.
+  - Re-prompt continuously until the user selects Quit.
 
-## Other Requirements
-- Create all the files to deploy the two docker containers
-- Create the README.md file with the details about what the app does, how it works, and how to set up and run the system
-  - Include the instruction on how to install all the necessary components to run Docker on Linux, MacOS, and Windows PC
-  - Add instructions how to build and run the containers
+## Other Requirements & Testing
+- Orchestrate container builds and deployments via `docker-compose.yml`.
+- Include automated system test coverage in `tests/test_system.py` runnable via `pytest tests/test_system.py -v` or `python -m pytest tests/test_system.py -v`.
+- Provide comprehensive `README.md` documentation containing Linux, macOS, and Windows Docker installation guides, container execution instructions, virtual environment setup, and example CLI session walkthroughs.

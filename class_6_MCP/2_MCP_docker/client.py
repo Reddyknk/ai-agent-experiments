@@ -24,27 +24,41 @@ RANDOM_SSE_URL = "http://127.0.0.1:8002/sse"
 
 
 def is_endpoint_reachable(url: str, timeout: float = 1.0) -> bool:
-    """Checks if an HTTP/SSE endpoint is reachable and responding."""
+    """Checks if an HTTP/SSE endpoint is reachable and responding with HTTP 200."""
     try:
-        req = urllib.request.Request(url, method="GET")
+        req = urllib.request.Request(url, method="GET", headers={"Accept": "text/event-stream"})
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            return response.status in (200, 204, 307, 400, 404)
-    except urllib.error.HTTPError as e:
-        # If the server responds with any HTTP status (even 4xx/5xx), the port is open and server is listening
-        return True
+            return response.status == 200
+    except urllib.error.HTTPError:
+        # Any HTTP status error (e.g. 404, 502, 500) indicates the SSE server endpoint is not ready/valid
+        return False
     except Exception:
         return False
 
 
 def get_docker_compose_cmd() -> Optional[List[str]]:
     """Determines whether 'docker compose' or 'docker-compose' is available."""
-    if shutil.which("docker"):
-        # Test if compose subcommand works
-        res = subprocess.run(["docker", "compose", "version"], capture_output=True, text=True)
+    # Add common Windows Docker Desktop paths to PATH environment variable if needed
+    possible_dirs = [
+        r"C:\Users\nkonr\AppData\Local\Programs\DockerDesktop\resources\bin",
+        r"C:\Program Files\Docker\Docker\resources\bin",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin"),
+        os.path.expandvars(r"%ProgramFiles%\Docker\Docker\resources\bin"),
+    ]
+    for pdir in possible_dirs:
+        if os.path.isdir(pdir) and pdir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = pdir + os.path.pathsep + os.environ.get("PATH", "")
+
+    docker_path = shutil.which("docker")
+    if docker_path:
+        res = subprocess.run([docker_path, "compose", "version"], capture_output=True, text=True)
         if res.returncode == 0:
-            return ["docker", "compose"]
-    if shutil.which("docker-compose"):
-        return ["docker-compose"]
+            return [docker_path, "compose"]
+
+    docker_compose_path = shutil.which("docker-compose")
+    if docker_compose_path:
+        return [docker_compose_path]
+
     return None
 
 
@@ -63,7 +77,7 @@ def ensure_servers_running(use_local: bool = False) -> str:
     random_up = is_endpoint_reachable(RANDOM_SSE_URL)
 
     if people_up and random_up:
-        print("[+] Both MCP servers are already running and reachable.")
+        print("[+] Both MCP servers are already running and reachable via SSE.")
         return "sse"
 
     # Servers not running - attempt to start with docker-compose
